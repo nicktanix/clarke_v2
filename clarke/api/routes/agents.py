@@ -1,6 +1,8 @@
 """Agent management endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -224,15 +226,15 @@ async def ingest_skill(
 
 @router.get("/{agent_id}", response_model=AgentStatusResponse)
 async def get_agent_status(
-    agent_id: str,
+    agent_id: UUID = Path(...),
     session: AsyncSession = Depends(get_session),
 ) -> AgentStatusResponse:
     """Get agent instance status."""
     # Check expiry first
-    await check_expiry(session, agent_id)
+    await check_expiry(session, str(agent_id))
     await session.commit()
 
-    instance = await get_agent_instance(session, agent_id)
+    instance = await get_agent_instance(session, str(agent_id))
     if not instance:
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found") from None
 
@@ -249,12 +251,12 @@ async def get_agent_status(
 
 @router.post("/{agent_id}/result", response_model=dict)
 async def submit_agent_result(
-    agent_id: str,
+    agent_id: UUID = Path(...),
     request: IngestResultRequest,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """Submit a sub-agent result."""
-    instance = await get_agent_instance(session, agent_id)
+    instance = await get_agent_instance(session, str(agent_id))
     if not instance:
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found") from None
     if instance.status != "active":
@@ -264,7 +266,7 @@ async def submit_agent_result(
 
     result = await ingest_result(
         session=session,
-        agent_id=agent_id,
+        agent_id=str(agent_id),
         tenant_id=instance.tenant_id,
         status=request.status,
         summary=request.summary,
@@ -278,15 +280,15 @@ async def submit_agent_result(
 
 @router.post("/{agent_id}/cancel", response_model=dict)
 async def cancel_agent_endpoint(
-    agent_id: str,
+    agent_id: UUID = Path(...),
     request: CancelAgentRequest,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """Cancel a sub-agent."""
-    instance = await get_agent_instance(session, agent_id)
+    instance = await get_agent_instance(session, str(agent_id))
     if not instance:
         raise HTTPException(status_code=404, detail=f"Agent {agent_id} not found") from None
 
-    result = await cancel_agent(session, agent_id, request.reason)
+    result = await cancel_agent(session, str(agent_id), request.reason)
     await session.commit()
     return result
