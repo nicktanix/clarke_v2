@@ -36,6 +36,17 @@ export const lastQueryResult = {
   query: "",
 };
 
+/** Normalize message content — may be a string or array of content parts. */
+function extractText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content))
+    return content
+      .filter((p: any) => p.type === "text")
+      .map((p: any) => p.text)
+      .join("\n");
+  return "";
+}
+
 /** Memory types that warrant refreshing the context cache. */
 const CONTEXT_REFRESH_TYPES = new Set([
   "decision",
@@ -167,7 +178,7 @@ const clarkePlugin = {
         const lastUserMsg = [...messages]
           .reverse()
           .find((m: any) => m.role === "user");
-        const userContent = lastUserMsg?.content || "";
+        const userContent = extractText(lastUserMsg?.content);
 
         if (
           userContent &&
@@ -218,7 +229,9 @@ const clarkePlugin = {
         const lastUser = [...messages].reverse().find((m: any) => m.role === "user");
         const lastAssistant = [...messages].reverse().find((m: any) => m.role === "assistant");
 
-        if (!lastUser?.content || !lastAssistant?.content) return;
+        const userText = extractText(lastUser?.content);
+        const assistantText = extractText(lastAssistant?.content);
+        if (!userText || !assistantText) return;
 
         // Submit implicit positive feedback if we queried CLARKE this turn
         if (lastQueryResult.requestId) {
@@ -235,8 +248,8 @@ const clarkePlugin = {
         // Send to CLARKE for significance classification + auto-storage
         const result = await assessTurn(
           config,
-          lastUser.content,
-          lastAssistant.content
+          userText,
+          assistantText
         ).catch(() => null);
 
         // If something memory-worthy was stored, refresh context cache
