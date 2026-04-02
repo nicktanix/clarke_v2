@@ -47,7 +47,38 @@ async def create_profile(
     request: CreateAgentProfileRequest,
     session: AsyncSession = Depends(get_session),
 ) -> AgentProfileResponse:
-    """Create an agent profile."""
+    """Create or update an agent profile (upsert by tenant_id + slug)."""
+    # Check for existing profile with same tenant + slug
+    existing = await get_agent_profile_by_slug(session, request.tenant_id, request.slug)
+    if existing:
+        # Update existing profile instead of failing on duplicate
+        updates = {
+            k: v
+            for k, v in request.model_dump().items()
+            if k not in ("tenant_id", "project_id", "slug") and v is not None
+        }
+        if updates:
+            from clarke.storage.postgres.repositories.agent_profile_repo import update_agent_profile
+
+            await update_agent_profile(session, existing.id, updates)
+            await session.commit()
+            profile = await get_agent_profile(session, existing.id)
+        else:
+            profile = existing
+        return AgentProfileResponse(
+            id=profile.id,
+            tenant_id=profile.tenant_id,
+            project_id=profile.project_id,
+            name=profile.name,
+            slug=profile.slug,
+            model_id=profile.model_id,
+            capabilities=profile.capabilities or [],
+            tool_access=profile.tool_access or [],
+            budget_tokens=profile.budget_tokens,
+            status=profile.status,
+            version=profile.version,
+        )
+
     profile = await create_agent_profile(session, request.model_dump())
     await session.commit()
     return AgentProfileResponse(
