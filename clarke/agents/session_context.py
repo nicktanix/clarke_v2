@@ -369,19 +369,31 @@ class SessionContextBuilder:
                 with_payload=True,
             )
 
-            skills: list[SkillEntry] = []
+            # Deduplicate by skill_name — keep highest-scoring chunk per skill
+            seen: dict[str, SkillEntry] = {}
             for point in results.points:
                 payload = point.payload or {}
-                skills.append(
-                    SkillEntry(
-                        skill_name=payload.get("skill_name", "unknown"),
+                name = payload.get("skill_name", "unknown")
+                score = point.score or 0.0
+                if name in seen:
+                    # Keep the higher-scoring chunk (better semantic match)
+                    if score > seen[name].score:
+                        seen[name] = SkillEntry(
+                            skill_name=name,
+                            content=payload.get("content", ""),
+                            trigger_conditions=payload.get("trigger_conditions", []),
+                            priority=payload.get("priority", 1),
+                            score=score,
+                        )
+                else:
+                    seen[name] = SkillEntry(
+                        skill_name=name,
                         content=payload.get("content", ""),
                         trigger_conditions=payload.get("trigger_conditions", []),
                         priority=payload.get("priority", 1),
-                        score=point.score or 0.0,
+                        score=score,
                     )
-                )
-            return skills
+            return list(seen.values())
         except Exception:
             logger.warning("session_context_skill_fetch_failed", exc_info=True)
         return []
