@@ -19,7 +19,6 @@ import {
   createDecision,
   createPolicy,
   ensureRegistered,
-  fetchGreeting,
   fetchHealth,
   fetchSessionContext,
   fetchSpawnContext,
@@ -77,74 +76,9 @@ const clarkePlugin = {
     const workspaceDir = api.config?.agents?.defaults?.workspace || "";
     setConfig(pluginConfig, workspaceDir);
 
-    // ── Memory Prompt Section ─────────────────────────────────────
-    // Injects CLARKE memory context into the prompt alongside OpenClaw's
-    // built-in memory. Called on every prompt build. Returns string[] that
-    // OpenClaw adds to the system prompt.
-
-    api.registerMemoryPromptSection((_params: any) => {
-      const config = getClarkeConfig();
-      if (!config?.tenantId) return [];
-
-      // Use cached session context (populated by context engine's assemble)
-      const cached = contextCache.get();
-      if (!cached) return [];
-
-      return [
-        "## CLARKE Memory System (ACTIVE)",
-        "",
-        "IMPORTANT: This agent uses CLARKE as its memory and persistence system.",
-        "DO NOT edit workspace markdown files (USER.md, SOUL.md, AGENTS.md, MEMORY.md)",
-        "to store information unless the user explicitly asks you to edit a file.",
-        "Instead, use the CLARKE tools to persist memories, decisions, and preferences:",
-        "- clarke_teach: Store knowledge, preferences, corrections, decisions",
-        "- clarke_recall: Retrieve information from CLARKE memory",
-        "- clarke_review: Review pending directive proposals",
-        "- clarke_create_decision: Record architectural/process decisions",
-        "- clarke_create_policy: Record organizational rules",
-        "",
-        "The following context was retrieved from CLARKE's brokered memory:",
-        "",
-        cached,
-      ];
-    });
-
-    // ── Memory Runtime ──────────────────────────────────────────
-    // Makes CLARKE available as a searchable memory backend.
-    // OpenClaw's memory_search tool will route through CLARKE.
-
-    api.registerMemoryRuntime({
-      async getMemorySearchManager(params: any) {
-        const config = getClarkeConfig();
-        if (!config?.tenantId) return { manager: null, error: "CLARKE not configured" };
-
-        return {
-          manager: {
-            status() {
-              return {
-                backend: "builtin" as const,
-                provider: "clarke",
-                workspaceDir: config.workspace,
-              };
-            },
-            async probeEmbeddingAvailability() {
-              const health = await fetchHealth(config);
-              return { ok: !!health };
-            },
-            async probeVectorAvailability() {
-              const health = await fetchHealth(config);
-              return !!health;
-            },
-          },
-        };
-      },
-      resolveMemoryBackendConfig(params: any) {
-        return {
-          backend: "builtin" as any,
-          provider: "clarke",
-        };
-      },
-    });
+    // Note: registerMemoryPromptSection and registerMemoryRuntime require
+    // plugin kind "memory", but we're a "context-engine". All context
+    // injection is handled by assemble() in the context engine below.
 
     // ── Context Engine ────────────────────────────────────────────
     // Handles per-query RAG augmentation and systemPromptAddition.
@@ -627,50 +561,9 @@ const clarkePlugin = {
       },
     }));
 
-    // ── Slash Commands ────────────────────────────────────────────
-
-    api.registerCommand({
-      name: "clarke",
-      description: "CLARKE dashboard",
-      async handler() {
-        const config = getClarkeConfig();
-        if (!config) return { text: "CLARKE not configured." };
-        await ensureRegistered(config);
-        return { text: await fetchGreeting(config) };
-      },
-    });
-
-    api.registerCommand({
-      name: "clarke_recall",
-      description: "Query CLARKE memory",
-      acceptsArgs: true,
-      async handler(ctx: any) {
-        const q = ctx.args?.trim();
-        if (!q) return { text: "Usage: /clarke_recall <question>" };
-        const config = getClarkeConfig();
-        if (!config) return { text: "CLARKE not configured." };
-        await ensureRegistered(config);
-        const result = await queryBroker(config, q);
-        return { text: result?.answer || "Query failed." };
-      },
-    });
-
-    api.registerCommand({
-      name: "clarke_teach",
-      description: "Teach CLARKE something",
-      acceptsArgs: true,
-      async handler(ctx: any) {
-        const note = ctx.args?.trim();
-        if (!note) return { text: "Usage: /clarke_teach <what to remember>" };
-        const config = getClarkeConfig();
-        if (!config) return { text: "CLARKE not configured." };
-        await ensureRegistered(config);
-        const result = await queryBroker(config, `Remember this: ${note}`);
-        if (!result) return { text: "Failed." };
-        await submitFeedback(config, result.requestId, true, `Teaching: ${note}`);
-        return { text: "Recorded." };
-      },
-    });
+    // Note: Slash commands removed — they conflicted with OpenClaw native
+    // commands (/clarke, /clarke_recall, /clarke_teach). Agents use the
+    // registered tools instead (clarke_status, clarke_recall, etc.).
   },
 };
 
