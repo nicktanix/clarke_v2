@@ -51,7 +51,34 @@ class BrokerService:
             "agent_id": request.agent_id,
             "agent_depth": 0,
             "degraded_mode": False,
+            "agent_session_context": None,
         }
+
+        # Phase 7: inject pre-built session context if available
+        if request.session_id:
+            try:
+                from clarke.settings import get_settings
+
+                settings = get_settings()
+                if settings.agent_context.session_context_enabled:
+                    from clarke.storage.postgres.repositories.agent_profile_repo import (
+                        get_session_context_by_session,
+                    )
+
+                    ctx_record = await get_session_context_by_session(session, request.session_id)
+                    if ctx_record and ctx_record.context_snapshot:
+                        initial_state["agent_session_context"] = ctx_record.context_snapshot
+                        logger.info(
+                            "session_context_injected",
+                            request_id=request_id,
+                            session_id=request.session_id,
+                        )
+            except Exception:
+                logger.warning(
+                    "session_context_injection_failed",
+                    request_id=request_id,
+                    exc_info=True,
+                )
 
         workflow = get_compiled_workflow()
         result = await workflow.ainvoke(
@@ -73,6 +100,13 @@ class BrokerService:
         # Store episodic memory (best-effort, non-blocking)
         if answer and not result.get("error"):
             try:
+                # Extract agent_profile_id from session context if available
+                agent_profile_id = None
+                agent_ctx = result.get("agent_session_context")
+                if agent_ctx:
+                    agent_profile_id = agent_ctx.get("session_context_id")
+                    # The session_context_id links to AgentSessionContext which has agent_profile_id
+
                 await store_episodic_memory(
                     tenant_id=request.tenant_id,
                     project_id=request.project_id,
@@ -82,6 +116,7 @@ class BrokerService:
                     message=request.message,
                     answer=answer,
                     query_features=result.get("query_features"),
+                    agent_profile_id=agent_profile_id,
                 )
             except Exception:
                 logger.warning("episodic_memory_failed", request_id=request_id, exc_info=True)

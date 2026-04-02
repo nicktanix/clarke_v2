@@ -52,6 +52,7 @@ async def store_episodic_memory(
     answer: str,
     query_features: dict | None = None,
     settings: Settings | None = None,
+    agent_profile_id: str | None = None,
 ) -> None:
     """Classify, summarize, redact, embed, and index a query/answer as episodic memory.
 
@@ -123,6 +124,7 @@ async def store_episodic_memory(
                     "is_active": True,
                     "canonical_ref": request_id,
                     "redacted_fields": redacted.redacted_fields,
+                    "agent_profile_id": agent_profile_id,
                 }
             ],
         )

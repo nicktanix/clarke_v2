@@ -7,7 +7,17 @@ from fastapi import FastAPI
 
 from clarke import __version__
 from clarke.api.middleware import RequestIdMiddleware
-from clarke.api.routes import admin, agents, decisions, feedback, health, ingest, policy, query
+from clarke.api.routes import (
+    admin,
+    agents,
+    decisions,
+    directives,
+    feedback,
+    health,
+    ingest,
+    policy,
+    query,
+)
 from clarke.retrieval.neo4j.client import dispose_neo4j, init_neo4j
 from clarke.retrieval.qdrant.client import dispose_qdrant, init_qdrant
 from clarke.settings import get_settings
@@ -47,6 +57,7 @@ def create_app() -> FastAPI:
     app.include_router(policy.router)
     app.include_router(decisions.router)
     app.include_router(agents.router)
+    app.include_router(directives.router)
     app.include_router(admin.router)
 
     return app

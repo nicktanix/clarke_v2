@@ -10,12 +10,56 @@ from clarke.api.schemas.admin import (
     ClusterResponse,
     ProtoClassAction,
     ProtoClassListItem,
+    SetupRequest,
+    SetupResponse,
 )
 from clarke.learning.proto_classes import ProtoClassManager
 from clarke.settings import get_settings
-from clarke.storage.postgres.models import RetrievalEpisode
+from clarke.storage.postgres.models import Project, RetrievalEpisode, Tenant
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.post("/setup", response_model=SetupResponse)
+async def setup_tenant_project(
+    request: SetupRequest,
+    session: AsyncSession = Depends(get_session),
+) -> SetupResponse:
+    """Create a tenant and project for a new CLARKE installation.
+
+    Idempotent: if a tenant with the same name exists, returns the existing IDs.
+    """
+    from sqlalchemy import select
+
+    # Check for existing tenant by name
+    result = await session.execute(select(Tenant).where(Tenant.name == request.tenant_name))
+    tenant = result.scalar_one_or_none()
+    created = False
+
+    if not tenant:
+        tenant = Tenant(name=request.tenant_name)
+        session.add(tenant)
+        await session.flush()
+        created = True
+
+    # Check for existing project
+    result = await session.execute(
+        select(Project).where(
+            Project.tenant_id == tenant.id,
+            Project.name == request.project_name,
+        )
+    )
+    project = result.scalar_one_or_none()
+
+    if not project:
+        project = Project(tenant_id=tenant.id, name=request.project_name)
+        session.add(project)
+        await session.flush()
+        created = True
+
+    await session.commit()
+
+    return SetupResponse(tenant_id=tenant.id, project_id=project.id, created=created)
 
 
 @router.get("/proto-classes", response_model=list[ProtoClassListItem])

@@ -125,17 +125,19 @@ class IngestionService:
             # Index in Qdrant
             store = get_qdrant_store()
             chunk_ids = [r["id"] for r in chunk_records]
-            payloads = [
-                {
+            is_skill = (request.metadata or {}).get("doc_type") == "skill"
+            payloads = []
+            for c in chunks:
+                payload = {
                     "tenant_id": request.tenant_id,
                     "project_id": request.project_id,
                     "document_id": doc_id,
                     "chunk_index": c.chunk_index,
                     "content": c.content[:1000],
                     "section_heading": c.metadata.get("heading"),
-                    "source_type": "docs",
+                    "source_type": "skill" if is_skill else "docs",
                     "node_type": "chunk",
-                    "trust_tier": 3,  # authoritative doc = tier 3
+                    "trust_tier": 2 if is_skill else 3,
                     "embedding_version": model,
                     "sensitivity_tier": "internal",
                     "redaction_version": "v1",
@@ -143,8 +145,13 @@ class IngestionService:
                     "canonical_ref": doc_id,
                     "updated_at": utc_now().isoformat(),
                 }
-                for c in chunks
-            ]
+                if is_skill:
+                    meta = request.metadata or {}
+                    payload["skill_name"] = meta.get("skill_name", "")
+                    payload["agent_capabilities"] = meta.get("agent_capabilities", [])
+                    payload["priority"] = meta.get("priority", 1)
+                    payload["trigger_conditions"] = meta.get("trigger_conditions", [])
+                payloads.append(payload)
             await store.upsert_chunks(chunk_ids, vectors, payloads)
 
             # Build graph nodes (best-effort, non-blocking)

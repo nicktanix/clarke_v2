@@ -106,6 +106,47 @@ Three structured model output types are treated as stable internal protocol:
 - `docs/draft/brokered-context-memory-system-v3.1.md` — Unified spec v3.1
 - `docs/draft/brokered-context-memory-system-milestones-v2.md` — Milestone breakdown
 
+## CLARKE Skills (Claude Code)
+
+Interact with CLARKE through slash commands. These skills use MCP tools to call the CLARKE API.
+
+| Skill | Purpose |
+|-------|---------|
+| `/clarke` | Dashboard — system health, active agents, policies, quick navigation |
+| `/clarke-agent` | Agent lifecycle — create, list, update, archive agent profiles |
+| `/clarke-skill` | Skill authoring — write and ingest new skills into CLARKE |
+| `/clarke-teach` | Learning — record decisions, policies, submit corrections |
+| `/clarke-recall` | Query — ask CLARKE a question, get context-augmented answers |
+| `/clarke-review` | Review queue — approve or reject pending directive proposals |
+| `/clarke-ingest` | Ingestion — feed documents, files, or code into CLARKE |
+| `/clarke-configure` | Settings — view and modify CLARKE configuration |
+
+### MCP Setup
+
+Add to Claude Code MCP config to enable CLARKE tools:
+```json
+{
+  "mcpServers": {
+    "clarke": {
+      "command": "python",
+      "args": ["-m", "clarke.mcp.server"],
+      "env": {
+        "CLARKE_API_URL": "http://localhost:8000"
+      }
+    }
+  }
+}
+```
+
+### Bootstrap
+
+Seed CLARKE with default agent profile and skill definitions:
+```bash
+python scripts/bootstrap_clarke_skills.py \
+    --tenant-id <uuid> --project-id <uuid> \
+    --endpoint http://localhost:8000
+```
+
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 

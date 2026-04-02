@@ -65,6 +65,55 @@ async def feedback(
                 settings=settings.learning,
             )
 
+    # Skill effectiveness update (Mechanism 1 — self-improvement)
+    settings = get_settings()
+    if episode and settings.self_improvement.self_improvement_enabled:
+        try:
+            from clarke.learning.skill_effectiveness import apply_skill_effectiveness_updates
+            from clarke.storage.postgres.repositories.agent_profile_repo import (
+                get_session_context_by_session,
+            )
+            from clarke.storage.postgres.repositories.request_repo import get_request_by_id
+
+            request_log = await get_request_by_id(session, request.request_id)
+            if request_log and request_log.session_id:
+                ctx = await get_session_context_by_session(session, request_log.session_id)
+                if ctx and ctx.skills_included and ctx.agent_profile_id:
+                    usefulness_for_skills = compute_usefulness_score(
+                        feedback_accepted=request.accepted,
+                        feedback_score=request.score,
+                        ucr=episode.usefulness_score or 0.0,
+                    )
+                    await apply_skill_effectiveness_updates(
+                        session,
+                        ctx.agent_profile_id,
+                        request.tenant_id,
+                        ctx.skills_included,
+                        usefulness_for_skills,
+                        settings.self_improvement,
+                    )
+        except Exception:
+            logger.warning("skill_effectiveness_update_failed", exc_info=True)
+
+    # Directive detection trigger (Mechanism 2 — corrections trigger proposal detection)
+    if settings.self_improvement.self_improvement_enabled and not request.accepted:
+        try:
+            from clarke.learning.directive_surfacing import schedule_detection
+            from clarke.storage.postgres.repositories.agent_profile_repo import (
+                get_session_context_by_session as get_ctx,
+            )
+            from clarke.storage.postgres.repositories.request_repo import (
+                get_request_by_id as get_req,
+            )
+
+            req_log = await get_req(session, request.request_id)
+            if req_log and req_log.session_id:
+                ctx_record = await get_ctx(session, req_log.session_id)
+                if ctx_record and ctx_record.agent_profile_id:
+                    await schedule_detection(request.tenant_id, ctx_record.agent_profile_id)
+        except Exception:
+            logger.debug("directive_detection_trigger_skipped", exc_info=True)
+
     # Audit
     from clarke.storage.postgres.repositories.audit_repo import create_audit_event
 

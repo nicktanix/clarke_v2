@@ -22,3 +22,14 @@ class ClusterRequest(BaseModel):
 class ClusterResponse(BaseModel):
     clusters_created: int
     classes: list[dict]
+
+
+class SetupRequest(BaseModel):
+    tenant_name: str = "default"
+    project_name: str = "default"
+
+
+class SetupResponse(BaseModel):
+    tenant_id: str
+    project_id: str
+    created: bool

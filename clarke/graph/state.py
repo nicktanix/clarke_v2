@@ -64,6 +64,9 @@ class BrokerState(TypedDict, total=False):
     subagent_handle: str | None
     subagent_instance_id: str | None
 
+    # Agent session context (Phase 7)
+    agent_session_context: dict | None
+
     # Output
     answer: str | None
     error: str | None

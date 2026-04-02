@@ -98,6 +98,32 @@ class TaxonomySettings(BaseSettings):
     clustering_enabled: bool = True
 
 
+class AgentContextSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="CLARKE_")
+
+    session_context_enabled: bool = False
+    default_session_budget_tokens: int = 8000
+    max_skills_per_session: int = 10
+    skill_priority_cutoff: int = 5
+
+
+class SelfImprovementSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="CLARKE_")
+
+    self_improvement_enabled: bool = False
+    skill_effectiveness_learning_rate: float = 0.05
+    skill_effectiveness_epsilon_initial: float = 0.10
+    skill_effectiveness_epsilon_min: float = 0.05
+    skill_effectiveness_epsilon_decay: float = 0.995
+    skill_semantic_weight: float = 0.6
+    skill_effectiveness_weight: float = 0.4
+    directive_min_cluster_size: int = 3
+    directive_similarity_threshold: float = 0.80
+    tenant_signal_min_agent_count: int = 2
+    tenant_signal_min_cluster_size: int = 5
+    tenant_signal_similarity_threshold: float = 0.80
+
+
 class GraphSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="CLARKE_")
 
@@ -124,6 +150,8 @@ class Settings(BaseSettings):
     learning: LearningSettings = Field(default_factory=LearningSettings)
     graph: GraphSettings = Field(default_factory=GraphSettings)
     taxonomy: TaxonomySettings = Field(default_factory=TaxonomySettings)
+    agent_context: AgentContextSettings = Field(default_factory=AgentContextSettings)
+    self_improvement: SelfImprovementSettings = Field(default_factory=SelfImprovementSettings)
 
 
 @lru_cache

@@ -433,3 +433,129 @@ class UsageQuota(Base):
     query_count: Mapped[int] = mapped_column(Integer, default=0)
     token_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+# --- Phase 7: Dynamic Agent Context ---
+
+
+class AgentProfile(Base):
+    __tablename__ = "agent_profiles"
+    __table_args__ = (UniqueConstraint("tenant_id", "slug"),)
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    tenant_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("tenants.id"), nullable=False
+    )
+    project_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("projects.id"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    slug: Mapped[str] = mapped_column(Text, nullable=False)
+    model_id: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Behavioral
+    system_prompt_override: Mapped[str | None] = mapped_column(Text)
+    behavioral_directives: Mapped[list | None] = mapped_column(JSONB)
+
+    # Capabilities
+    capabilities: Mapped[list | None] = mapped_column(JSONB)
+    tool_access: Mapped[list | None] = mapped_column(JSONB)
+
+    # Budget / constraints
+    budget_tokens: Mapped[int] = mapped_column(Integer, default=8000)
+    allowed_sources: Mapped[list | None] = mapped_column(JSONB)
+
+    # Lifecycle
+    status: Mapped[str] = mapped_column(Text, default="active")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class AgentSessionContext(Base):
+    __tablename__ = "agent_session_contexts"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    tenant_id: Mapped[str] = mapped_column(Text, nullable=False)
+    agent_profile_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("agent_profiles.id"), nullable=False
+    )
+    session_id: Mapped[str] = mapped_column(Text, nullable=False)
+    context_snapshot: Mapped[dict | None] = mapped_column(JSONB)
+    skills_included: Mapped[list | None] = mapped_column(JSONB)
+    policies_included: Mapped[list | None] = mapped_column(JSONB)
+    token_count: Mapped[int] = mapped_column(Integer, default=0)
+    degraded_mode: Mapped[bool] = mapped_column(Boolean, default=False)
+    build_latency_ms: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+# --- Phase 7b: Self-Improvement Loop ---
+
+
+class SkillEffectiveness(Base):
+    __tablename__ = "skill_effectiveness"
+    __table_args__ = (UniqueConstraint("agent_profile_id", "skill_name"),)
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    tenant_id: Mapped[str] = mapped_column(Text, nullable=False)
+    agent_profile_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("agent_profiles.id"), nullable=False
+    )
+    skill_name: Mapped[str] = mapped_column(Text, nullable=False)
+    effectiveness: Mapped[float] = mapped_column(Float, default=0.5)
+    update_count: Mapped[int] = mapped_column(Integer, default=0)
+    epsilon: Mapped[float] = mapped_column(Float, default=0.10)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class DirectiveProposal(Base):
+    __tablename__ = "directive_proposals"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    tenant_id: Mapped[str] = mapped_column(Text, nullable=False)
+    agent_profile_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("agent_profiles.id"), nullable=False
+    )
+    proposed_directive: Mapped[str] = mapped_column(Text, nullable=False)
+    source_memory_ids: Mapped[list | None] = mapped_column(JSONB)
+    cluster_size: Mapped[int] = mapped_column(Integer, default=0)
+    similarity_score: Mapped[float] = mapped_column(Float, default=0.0)
+    status: Mapped[str] = mapped_column(Text, default="pending_approval")
+    proposed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    reviewed_by: Mapped[str | None] = mapped_column(Text)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_comment: Mapped[str | None] = mapped_column(Text)
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    applied_version: Mapped[int | None] = mapped_column(Integer)
+
+
+class TenantSignal(Base):
+    __tablename__ = "tenant_signals"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    tenant_id: Mapped[str] = mapped_column(Text, nullable=False)
+    signal_type: Mapped[str] = mapped_column(Text, nullable=False)
+    content_summary: Mapped[str] = mapped_column(Text, nullable=False)
+    source_memory_ids: Mapped[list | None] = mapped_column(JSONB)
+    agent_profile_ids: Mapped[list | None] = mapped_column(JSONB)
+    agent_count: Mapped[int] = mapped_column(Integer, default=0)
+    cluster_size: Mapped[int] = mapped_column(Integer, default=0)
+    similarity_score: Mapped[float] = mapped_column(Float, default=0.0)
+    policy_node_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("policy_nodes.id")
+    )
+    status: Mapped[str] = mapped_column(Text, default="detected")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)

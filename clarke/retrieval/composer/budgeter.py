@@ -19,6 +19,19 @@ def allocate_budget(
     }
 
 
+def allocate_session_budget(total_tokens: int = 8000) -> dict[str, int]:
+    """Allocate token budget for session context sections."""
+    return {
+        "identity": int(total_tokens * 0.05),
+        "directives": int(total_tokens * 0.10),
+        "policies": int(total_tokens * 0.10),
+        "skills": int(total_tokens * 0.30),
+        "evidence": int(total_tokens * 0.25),
+        "decisions": int(total_tokens * 0.10),
+        "recent_state": int(total_tokens * 0.10),
+    }
+
+
 def enforce_budget(
     items: list[RetrievedItem],
     max_tokens: int,

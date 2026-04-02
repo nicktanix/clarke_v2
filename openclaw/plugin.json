@@ -1,0 +1,32 @@
+{
+  "name": "clarke",
+  "version": "0.1.0",
+  "description": "CLARKE — Cognitive Learning Augmentation Retrieval Knowledge Engine. Brokered memory and context management for OpenClaw agents.",
+  "homepage": "https://github.com/clarke-ai/clarke",
+  "license": "MIT",
+  "configSchema": {
+    "endpoint": {
+      "type": "string",
+      "default": "http://localhost:8000",
+      "description": "CLARKE API endpoint"
+    },
+    "tenant_id": {
+      "type": "string",
+      "description": "CLARKE tenant ID (auto-generated during install if not set)"
+    },
+    "project_id": {
+      "type": "string",
+      "description": "CLARKE project ID (auto-generated during install if not set)"
+    },
+    "agent_slug": {
+      "type": "string",
+      "default": "clarke-operator",
+      "description": "Default agent profile slug"
+    },
+    "auto_refresh": {
+      "type": "boolean",
+      "default": true,
+      "description": "Refresh context files on session start"
+    }
+  }
+}
