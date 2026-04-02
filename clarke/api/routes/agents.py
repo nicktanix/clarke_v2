@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -226,7 +226,7 @@ async def ingest_skill(
 
 @router.get("/{agent_id}", response_model=AgentStatusResponse)
 async def get_agent_status(
-    agent_id: UUID = Path(...),
+    agent_id: UUID,
     session: AsyncSession = Depends(get_session),
 ) -> AgentStatusResponse:
     """Get agent instance status."""
@@ -251,7 +251,7 @@ async def get_agent_status(
 
 @router.post("/{agent_id}/result", response_model=dict)
 async def submit_agent_result(
-    agent_id: UUID = Path(...),
+    agent_id: UUID,
     request: IngestResultRequest,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
@@ -280,7 +280,7 @@ async def submit_agent_result(
 
 @router.post("/{agent_id}/cancel", response_model=dict)
 async def cancel_agent_endpoint(
-    agent_id: UUID = Path(...),
+    agent_id: UUID,
     request: CancelAgentRequest,
     session: AsyncSession = Depends(get_session),
 ) -> dict:
