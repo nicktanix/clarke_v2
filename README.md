@@ -104,7 +104,15 @@ The bootstrap script (step 3 above) automatically configures:
 
 CLARKE provides a one-shot installer for [OpenClaw](https://github.com/openclaw/openclaw) workspaces.
 
-**Install into an OpenClaw workspace:**
+**One-line install** (clones CLARKE, starts backend, configures everything):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/clarke-ai/clarke/main/setup.sh | bash -s -- \
+    --workspace /path/to/openclaw/workspace \
+    --openai-key sk-your-key
+```
+
+**Or install manually** from an existing CLARKE checkout:
 
 ```bash
 python openclaw/install.py --workspace /path/to/openclaw/workspace
