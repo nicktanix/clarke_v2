@@ -52,7 +52,8 @@ function extractText(content: unknown): string {
   return "";
 }
 
-/** Stores CLARKE context for spawned child sessions. */
+/** Tracks child sessions that CLARKE should inject context into.
+ *  Key: childSessionKey, Value: rendered context (empty string = pending first assemble). */
 const childSessionContexts = new Map<string, string>();
 
 /** Memory types that warrant refreshing the context cache. */
@@ -154,12 +155,44 @@ const clarkePlugin = {
           parts.push(queryContext);
         }
 
-        // Inject child session context if this is a spawned sub-agent
+        // Inject child session context if this is a spawned sub-agent.
+        // prepareSubagentSpawn() marks the session with "" (pending);
+        // on first assemble() we extract the task from messages and fetch
+        // CLARKE context, then cache it for subsequent calls.
         const sessionKey = params?.sessionKey || "";
-        const childCtx = childSessionContexts.get(sessionKey);
-        if (childCtx) {
-          parts.push("");
-          parts.push(childCtx);
+        if (childSessionContexts.has(sessionKey)) {
+          let childCtx = childSessionContexts.get(sessionKey)!;
+
+          if (!childCtx) {
+            // First assemble for this child — extract task from messages
+            const allMessages = params.messages || [];
+            const taskParts: string[] = [];
+            for (const msg of allMessages) {
+              const text = extractText(msg?.content);
+              if (text && text.length > 10) {
+                taskParts.push(text);
+              }
+            }
+            const task = taskParts.join(" ").substring(0, 2000);
+
+            if (task) {
+              const spawnCtx = await fetchSpawnContext(config, task).catch(
+                () => null
+              );
+              if (spawnCtx && spawnCtx.skills.length > 0) {
+                childCtx = renderSpawnContextMarkdown(spawnCtx);
+                childSessionContexts.set(sessionKey, childCtx);
+              } else {
+                // No skills matched — don't retry on subsequent calls
+                childSessionContexts.set(sessionKey, "none");
+              }
+            }
+          }
+
+          if (childCtx && childCtx !== "none") {
+            parts.push("");
+            parts.push(childCtx);
+          }
         }
 
         return {
@@ -218,33 +251,23 @@ const clarkePlugin = {
       },
 
       async prepareSubagentSpawn(params: any) {
-        // Intercept sub-agent spawn: analyze the task, pick capabilities,
-        // fetch matching skill instructions from CLARKE, and inject
-        // them into the child session's context.
+        // Mark this child session so assemble() knows to inject CLARKE context.
+        // The spawn hook only receives session keys (no task description),
+        // so actual context fetching happens in the child's first assemble().
         const config = getClarkeConfig();
         if (!config?.tenantId) return undefined;
 
-        // Extract task from the spawn parameters
-        const task = params?.task || params?.description || "";
-        if (!task) return undefined;
+        const childKey = params?.childSessionKey;
+        if (!childKey) return undefined;
 
-        try {
-          // CLARKE analyzes the task, infers capabilities, returns matched skills
-          const spawnCtx = await fetchSpawnContext(config, task);
-          if (!spawnCtx || spawnCtx.skills.length === 0) return undefined;
+        // Empty string = "pending" — assemble() will fetch on first call
+        childSessionContexts.set(childKey, "");
 
-          // Store the rendered context keyed by child session for assemble() to pick up
-          const contextMd = renderSpawnContextMarkdown(spawnCtx);
-          childSessionContexts.set(params.childSessionKey, contextMd);
-
-          return {
-            rollback: () => {
-              childSessionContexts.delete(params.childSessionKey);
-            },
-          };
-        } catch {
-          return undefined;
-        }
+        return {
+          rollback: () => {
+            childSessionContexts.delete(childKey);
+          },
+        };
       },
 
       async onSubagentEnded(params: any) {
