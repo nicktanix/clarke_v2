@@ -47,10 +47,69 @@ const clarkePlugin = {
     const workspaceDir = api.config?.agents?.defaults?.workspace || "";
     setConfig(pluginConfig, workspaceDir);
 
+    // ── Memory Prompt Section ─────────────────────────────────────
+    // Injects CLARKE memory context into the prompt alongside OpenClaw's
+    // built-in memory. Called on every prompt build. Returns string[] that
+    // OpenClaw adds to the system prompt.
+
+    api.registerMemoryPromptSection((_params: any) => {
+      const config = getClarkeConfig();
+      if (!config?.tenantId) return [];
+
+      // Use cached session context (populated by context engine's assemble)
+      const cached = contextCache.get();
+      if (!cached) return [];
+
+      return [
+        "## CLARKE Memory Context",
+        "The following context is from CLARKE's brokered memory system.",
+        "Policies and decisions are authoritative. Cite sources when referencing.",
+        "",
+        cached,
+      ];
+    });
+
+    // ── Memory Runtime ──────────────────────────────────────────
+    // Makes CLARKE available as a searchable memory backend.
+    // OpenClaw's memory_search tool will route through CLARKE.
+
+    api.registerMemoryRuntime({
+      async getMemorySearchManager(params: any) {
+        const config = getClarkeConfig();
+        if (!config?.tenantId) return { manager: null, error: "CLARKE not configured" };
+
+        return {
+          manager: {
+            status() {
+              return {
+                backend: "builtin" as const,
+                provider: "clarke",
+                workspaceDir: config.workspace,
+              };
+            },
+            async probeEmbeddingAvailability() {
+              const health = await fetchHealth(config);
+              return { ok: !!health };
+            },
+            async probeVectorAvailability() {
+              const health = await fetchHealth(config);
+              return !!health;
+            },
+          },
+        };
+      },
+      resolveMemoryBackendConfig(params: any) {
+        return {
+          backend: "builtin" as any,
+          provider: "clarke",
+        };
+      },
+    });
+
     // ── Context Engine ────────────────────────────────────────────
-    // This is the official way to inject content into every LLM call.
-    // The assemble() method returns systemPromptAddition which gets
-    // prepended to the system prompt on every model run.
+    // Handles per-query RAG augmentation and systemPromptAddition.
+    // The assemble() method fetches CLARKE context (cached) and
+    // query-specific retrieval results.
 
     api.registerContextEngine("clarke", () => ({
       info: {
