@@ -1,8 +1,8 @@
 /**
  * CLARKE API client for the OpenClaw plugin.
  *
- * Config is injected via setConfig() from the plugin's register() function,
- * using OpenClaw's pluginConfig API — no direct process.env access.
+ * Config is injected via setConfig() from the plugin register function,
+ * using the pluginConfig API provided by the host.
  */
 
 export interface ClarkeConfig {
