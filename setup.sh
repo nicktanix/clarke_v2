@@ -116,9 +116,8 @@ check_cmd() {
 }
 
 MISSING=0
-check_cmd python3 || MISSING=1
-check_cmd docker  || MISSING=1
-check_cmd git     || MISSING=1
+check_cmd docker || MISSING=1
+check_cmd git    || MISSING=1
 
 # Check docker compose (v2 plugin or standalone)
 if docker compose version &>/dev/null; then
@@ -132,19 +131,77 @@ else
     MISSING=1
 fi
 
-# Check Python version (3.12 or 3.13 — 3.14+ has langchain/pydantic v1 incompatibilities)
-PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "0.0")
-PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
-PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
-if [[ "$PYTHON_MAJOR" -lt 3 ]] || [[ "$PYTHON_MAJOR" -eq 3 && "$PYTHON_MINOR" -lt 12 ]]; then
-    err "Python 3.12+ required (found $PYTHON_VERSION)"
-    MISSING=1
-elif [[ "$PYTHON_MAJOR" -eq 3 && "$PYTHON_MINOR" -ge 14 ]]; then
-    err "Python 3.14+ is not yet supported (langchain requires Pydantic v1 compat)"
-    err "Please install Python 3.12 or 3.13"
-    MISSING=1
+# ── Find a compatible Python (3.12 or 3.13) ────────────────────────
+# python3.14+ is not supported (langchain/pydantic v1 compat).
+# We check, in order of preference:
+#   1. python3.13, python3.12 (explicit minor version binaries)
+#   2. python3 (if it happens to be 3.12 or 3.13)
+#   3. Scan common paths: /usr/bin, /usr/local/bin, homebrew, pyenv, asdf
+
+PYTHON=""
+
+check_python_bin() {
+    local bin="$1"
+    if [[ ! -x "$bin" ]] && ! command -v "$bin" &>/dev/null; then
+        return 1
+    fi
+    local ver
+    ver=$("$bin" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null) || return 1
+    local major minor
+    major=$(echo "$ver" | cut -d. -f1)
+    minor=$(echo "$ver" | cut -d. -f2)
+    if [[ "$major" -eq 3 && "$minor" -ge 12 && "$minor" -lt 14 ]]; then
+        PYTHON="$bin"
+        PYTHON_VERSION="$ver"
+        return 0
+    fi
+    return 1
+}
+
+# Try explicit versioned binaries first (most reliable)
+for candidate in python3.13 python3.12; do
+    check_python_bin "$candidate" && break
+done
+
+# Fall back to python3 if no versioned binary found
+if [[ -z "$PYTHON" ]]; then
+    check_python_bin python3 || true
+fi
+
+# Scan common install locations
+if [[ -z "$PYTHON" ]]; then
+    SEARCH_DIRS=(
+        /usr/bin
+        /usr/local/bin
+        /opt/homebrew/bin
+        /home/linuxbrew/.linuxbrew/bin
+        /home/linuxbrew/.linuxbrew/opt/python@3.13/bin
+        /home/linuxbrew/.linuxbrew/opt/python@3.12/bin
+        /opt/homebrew/opt/python@3.13/bin
+        /opt/homebrew/opt/python@3.12/bin
+        "$HOME/.pyenv/shims"
+        "$HOME/.asdf/shims"
+    )
+    for dir in "${SEARCH_DIRS[@]}"; do
+        [[ -d "$dir" ]] || continue
+        for candidate in "$dir"/python3.13 "$dir"/python3.12; do
+            check_python_bin "$candidate" && break 2
+        done
+    done
+fi
+
+if [[ -n "$PYTHON" ]]; then
+    ok "Python $PYTHON_VERSION ($PYTHON)"
 else
-    ok "Python $PYTHON_VERSION"
+    # Show what was found for debugging
+    DEFAULT_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "not found")
+    err "No compatible Python found (need 3.12 or 3.13, found: $DEFAULT_VER)"
+    err "Searched: python3.13, python3.12, python3, and common install paths"
+    err "Install Python 3.12 or 3.13:"
+    err "  Ubuntu/Debian: sudo apt install python3.13 python3.13-venv"
+    err "  macOS:         brew install python@3.13"
+    err "  pyenv:         pyenv install 3.13"
+    MISSING=1
 fi
 
 if [[ $MISSING -eq 1 ]]; then
@@ -194,8 +251,17 @@ ok "CLARKE source ready at $INSTALL_DIR"
 step "Setting up Python environment"
 
 if [[ ! -d ".venv" ]]; then
-    info "Creating virtual environment..."
-    python3 -m venv .venv
+    info "Creating virtual environment with $PYTHON ($PYTHON_VERSION)..."
+    "$PYTHON" -m venv .venv
+elif [[ -n "$PYTHON" ]]; then
+    # Verify existing venv uses a compatible Python
+    VENV_VER=$(.venv/bin/python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "0.0")
+    VENV_MINOR=$(echo "$VENV_VER" | cut -d. -f2)
+    if [[ "$VENV_MINOR" -ge 14 ]] || [[ "$VENV_MINOR" -lt 12 ]]; then
+        warn "Existing venv uses Python $VENV_VER — recreating with $PYTHON_VERSION"
+        rm -rf .venv
+        "$PYTHON" -m venv .venv
+    fi
 fi
 
 source .venv/bin/activate
