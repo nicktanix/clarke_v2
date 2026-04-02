@@ -11,6 +11,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!openclaw/lib/
 lib64/
 parts/
 sdist/
