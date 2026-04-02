@@ -20,6 +20,7 @@ Usage:
 
 import argparse
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -43,11 +44,6 @@ from openclaw.lib.config import (  # noqa: E402
     get_clarke_mcp_server_def,
     read_config,
     write_config,
-)
-from openclaw.lib.context_writer import (  # noqa: E402
-    fetch_session_context,
-    write_agents_md,
-    write_soul_md,
 )
 from openclaw.lib.discovery import (  # noqa: E402
     backup_workspace_files,
@@ -179,47 +175,52 @@ def install(args: argparse.Namespace) -> None:
             print(f"  Installed skill: {skill_dir.name}")
         installed_skills += 1
 
-    # ── 8. Install hooks ────────────────────────────────────────────
-    print("\n--- Installing Hooks ---")
-    hooks_src = PLUGIN_DIR / "hooks"
-    hooks_dst = workspace / "hooks"
-    hooks_dst.mkdir(exist_ok=True)
+    # ── 8. Build TypeScript plugin ────────────────────────────────
+    print("\n--- Building Plugin ---")
+    if dry_run:
+        print("  [dry-run] Would run npm install && npm run build")
+    else:
+        try:
+            subprocess.run(
+                ["npm", "install"],
+                cwd=PLUGIN_DIR,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["npm", "run", "build"],
+                cwd=PLUGIN_DIR,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            print("  TypeScript plugin built successfully")
+        except subprocess.CalledProcessError as e:
+            print(f"  Plugin build failed: {e.stderr[:200]}", file=sys.stderr)
+            print("  Context injection will not work until the plugin is built", file=sys.stderr)
+        except FileNotFoundError:
+            print("  npm not found — skipping plugin build", file=sys.stderr)
+            print("  Run: cd openclaw && npm install && npm run build", file=sys.stderr)
 
-    for hook_dir in sorted(hooks_src.iterdir()):
-        if not hook_dir.is_dir():
-            continue
-        dst_dir = hooks_dst / hook_dir.name
-        if dry_run:
-            print(f"  [dry-run] Would install hook: {hook_dir.name}")
-        else:
-            dst_dir.mkdir(exist_ok=True)
-            for f in hook_dir.iterdir():
-                shutil.copy2(f, dst_dir / f.name)
-            print(f"  Installed hook: {hook_dir.name}")
+    # ── 9. Set environment for plugin ──────────────────────────────
+    print("\n--- Configuring Plugin Environment ---")
+    env_note = (
+        f"  CLARKE_API_URL={endpoint}\n"
+        f"  CLARKE_TENANT_ID={tenant_id}\n"
+        f"  CLARKE_PROJECT_ID={project_id}\n"
+        f"  CLARKE_AGENT_SLUG={args.agent_slug}"
+    )
+    if dry_run:
+        print(f"  [dry-run] Plugin needs these env vars:\n{env_note}")
+    else:
+        print("  The plugin reads config from environment variables.")
+        print(f"  Add these to your OpenClaw environment or .env:\n{env_note}")
 
-    # ── 9. Bootstrap CLARKE (agents + skills into Qdrant) ───────────
+    # ── 10. Bootstrap CLARKE (agents + skills into Qdrant) ──────────
     if not dry_run and not args.skip_backend:
         print("\n--- CLARKE Bootstrap ---")
         _bootstrap_clarke(endpoint, tenant_id, project_id, args.skip_superpowers)
-
-    # ── 10. Write context files ─────────────────────────────────────
-    print("\n--- Writing Context Files ---")
-    agent_slug = args.agent_slug
-    if dry_run:
-        print("  [dry-run] Would fetch CLARKE context and write SOUL.md + AGENTS.md")
-    elif check_clarke_health(endpoint):
-        try:
-            context_md = fetch_session_context(endpoint, tenant_id, project_id, agent_slug)
-            soul_original = (
-                (workspace / "SOUL.md").read_text() if (workspace / "SOUL.md").exists() else None
-            )
-            write_soul_md(workspace, context_md, soul_original)
-            write_agents_md(workspace, context_md, endpoint, tenant_id, project_id, agent_slug)
-            print(f"  Wrote SOUL.md + AGENTS.md ({len(context_md)} chars of CLARKE context)")
-        except (httpx.ConnectError, httpx.HTTPStatusError) as e:
-            print(f"  Context fetch failed: {e} — files not updated", file=sys.stderr)
-    else:
-        print("  CLARKE not reachable — skipping context file generation")
 
     # ── Report ──────────────────────────────────────────────────────
     print("\n" + "=" * 50)
@@ -228,7 +229,7 @@ def install(args: argparse.Namespace) -> None:
     print(f"  Endpoint:     {endpoint}")
     print(f"  Tenant:       {tenant_id}")
     print(f"  Project:      {project_id}")
-    print(f"  Agent:        {agent_slug}")
+    print(f"  Agent:        {args.agent_slug}")
     print(f"  Skills:       {installed_skills}")
     print()
     print("Next steps:")

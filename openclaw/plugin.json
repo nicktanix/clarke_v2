@@ -1,9 +1,11 @@
 {
   "name": "clarke",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "CLARKE — Cognitive Learning Augmentation Retrieval Knowledge Engine. Brokered memory and context management for OpenClaw agents.",
   "homepage": "https://github.com/nicktanix/clarke_v2",
   "license": "Polyform-Noncommercial-1.0.0",
+  "main": "dist/index.js",
+  "hooks": ["agent:bootstrap", "before_prompt_build", "session_start"],
   "configSchema": {
     "endpoint": {
       "type": "string",
@@ -23,10 +25,10 @@
       "default": "clarke-operator",
       "description": "Default agent profile slug"
     },
-    "auto_refresh": {
-      "type": "boolean",
-      "default": true,
-      "description": "Refresh context files on session start"
+    "context_cache_ttl_seconds": {
+      "type": "integer",
+      "default": 60,
+      "description": "How long to cache CLARKE context between LLM calls (seconds)"
     }
   }
 }

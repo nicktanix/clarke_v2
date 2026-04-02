@@ -1,0 +1,20 @@
+{
+  "name": "@clarke/openclaw-plugin",
+  "version": "0.2.0",
+  "description": "CLARKE memory and context engine — native OpenClaw plugin",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^5.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "Polyform-Noncommercial-1.0.0"
+}

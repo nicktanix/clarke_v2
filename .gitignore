@@ -41,6 +41,10 @@ venv/
 ENV/
 env/
 
+# Node
+node_modules/
+dist/
+
 # Project / local
 .gitnexus
 .DS_Store
