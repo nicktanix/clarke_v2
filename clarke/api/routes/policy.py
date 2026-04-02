@@ -23,13 +23,17 @@ async def create_policy(
 ) -> PolicyResponse:
     service = PolicyService()
     result = await service.create_policy(
-        session, request.tenant_id, request.content, request.owner_id
+        session,
+        request.tenant_id,
+        request.content,
+        request.owner_id,
+        auto_approve=request.auto_approve,
     )
     await create_audit_event(
         session,
         tenant_id=request.tenant_id,
         actor_id=request.owner_id,
-        action="policy_created",
+        action="policy_created" if not request.auto_approve else "policy_auto_approved",
         target_type="policy",
         target_id=result["id"],
     )
@@ -94,8 +98,12 @@ async def submit_policy(
 @router.get("", response_model=list[PolicyListItem])
 async def list_policies(
     tenant_id: str,
+    status: str | None = None,
     session: AsyncSession = Depends(get_session),
 ) -> list[PolicyListItem]:
     service = PolicyService()
-    policies = await service.get_active(session, tenant_id)
+    if status and status != "active":
+        policies = await service.get_by_status(session, tenant_id, status)
+    else:
+        policies = await service.get_active(session, tenant_id)
     return [PolicyListItem(**p) for p in policies]

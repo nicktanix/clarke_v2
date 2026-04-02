@@ -27,6 +27,16 @@ async def get_active_policies(session: AsyncSession, tenant_id: str) -> list[Pol
     return list(result.scalars().all())
 
 
+async def get_policies_by_status(session: AsyncSession, tenant_id: str, status: str) -> list[PolicyNode]:
+    result = await session.execute(
+        select(PolicyNode).where(
+            PolicyNode.tenant_id == tenant_id,
+            PolicyNode.status == status,
+        )
+    )
+    return list(result.scalars().all())
+
+
 async def get_policy_by_id(session: AsyncSession, policy_id: str) -> PolicyNode | None:
     result = await session.execute(select(PolicyNode).where(PolicyNode.id == policy_id))
     return result.scalar_one_or_none()

@@ -6,20 +6,26 @@ from clarke.storage.postgres.repositories.policy_repo import (
     create_policy_approval,
     create_policy_node,
     get_active_policies,
+    get_policies_by_status,
     update_policy_status,
 )
 
 
 class PolicyService:
     async def create_policy(
-        self, session: AsyncSession, tenant_id: str, content: str, owner_id: str
+        self,
+        session: AsyncSession,
+        tenant_id: str,
+        content: str,
+        owner_id: str,
+        auto_approve: bool = False,
     ) -> dict:
         record = await create_policy_node(
             session,
             {
                 "tenant_id": tenant_id,
                 "content": content,
-                "status": "draft",
+                "status": "active" if auto_approve else "draft",
                 "owner_id": owner_id,
             },
         )
@@ -71,6 +77,13 @@ class PolicyService:
 
     async def get_active(self, session: AsyncSession, tenant_id: str) -> list[dict]:
         policies = await get_active_policies(session, tenant_id)
+        return [
+            {"id": p.id, "content": p.content, "source": "policy", "status": p.status}
+            for p in policies
+        ]
+
+    async def get_by_status(self, session: AsyncSession, tenant_id: str, status: str) -> list[dict]:
+        policies = await get_policies_by_status(session, tenant_id, status)
         return [
             {"id": p.id, "content": p.content, "source": "policy", "status": p.status}
             for p in policies

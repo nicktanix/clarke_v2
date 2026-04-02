@@ -7,6 +7,7 @@ class CreatePolicyRequest(BaseModel):
     tenant_id: str
     content: str
     owner_id: str
+    auto_approve: bool = False
 
 
 class ApprovePolicyRequest(BaseModel):
