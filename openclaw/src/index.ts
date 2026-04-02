@@ -47,7 +47,7 @@ const turnBuffer: { user: string; assistant: string } = {
 const sessionInteractions: Array<{ user: string; assistant: string }> = [];
 
 const clarkePlugin = {
-  id: "clarke",
+  id: "openclaw-clarke",
   name: "CLARKE",
   description:
     "Cognitive Learning Augmentation Retrieval Knowledge Engine — brokered memory and context management",
