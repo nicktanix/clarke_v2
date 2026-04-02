@@ -14,6 +14,7 @@ import {
   listAgents,
   listPolicies,
   queryBroker,
+  setConfig,
   submitFeedback,
 } from "./clarke-client.js";
 import { handleBeforeReply } from "./hooks/before-reply.js";
@@ -42,6 +43,11 @@ const clarkePlugin = {
     "Cognitive Learning Augmentation Retrieval Knowledge Engine — brokered memory and context management",
 
   register(api: any) {
+    // ── Initialize config from OpenClaw plugin API ────────────────
+    const pluginConfig = api.pluginConfig || {};
+    const workspaceDir = api.config?.agents?.defaults?.workspace || "";
+    setConfig(pluginConfig, workspaceDir);
+
     // ── Hooks ─────────────────────────────────────────────────────
 
     api.registerHook("agent:bootstrap", handleBootstrap);

@@ -1,8 +1,8 @@
 /**
  * CLARKE API client for the OpenClaw plugin.
  *
- * Uses native fetch() — no dependencies. Reads config from environment
- * variables or plugin configuration.
+ * Config is injected via setConfig() from the plugin's register() function,
+ * using OpenClaw's pluginConfig API — no direct process.env access.
  */
 
 export interface ClarkeConfig {
@@ -16,47 +16,28 @@ export interface ClarkeConfig {
 let _config: ClarkeConfig | null = null;
 
 /**
- * Resolve CLARKE config from environment variables.
- *
- * If CLARKE_TENANT_ID and CLARKE_PROJECT_ID are set, uses them directly.
- * Otherwise, auto-registers with the CLARKE backend using the workspace
- * path to derive a project name (each workspace gets its own CLARKE project).
+ * Set config from the plugin register(api) call.
+ * Called once during plugin initialization.
  */
-export function resolveConfig(): ClarkeConfig | null {
-  const endpoint =
-    process.env.CLARKE_API_URL || process.env.CLARKE_ENDPOINT || "";
-  const agentSlug = process.env.CLARKE_AGENT_SLUG || "clarke-operator";
-  const workspace = process.env.OPENCLAW_WORKSPACE || process.cwd();
-
-  if (!endpoint) return null;
-
-  let tenantId = process.env.CLARKE_TENANT_ID || "";
-  let projectId = process.env.CLARKE_PROJECT_ID || "";
-
-  // If IDs are pre-configured, use them
-  if (tenantId && projectId) {
-    return { endpoint, tenantId, projectId, agentSlug, workspace };
-  }
-
-  // Otherwise, we'll auto-register on first use (see ensureRegistered)
-  return { endpoint, tenantId, projectId, agentSlug, workspace };
+export function setConfig(pluginConfig: Record<string, unknown>, workspaceDir: string): void {
+  _config = {
+    endpoint: (pluginConfig?.endpoint as string) || "http://localhost:8000",
+    tenantId: (pluginConfig?.tenant_id as string) || "",
+    projectId: (pluginConfig?.project_id as string) || "",
+    agentSlug: (pluginConfig?.agent_slug as string) || "clarke-operator",
+    workspace: workspaceDir || "",
+  };
 }
 
 /**
- * Get or create the singleton CLARKE config.
+ * Get the CLARKE config (must call setConfig first).
  */
 export function getClarkeConfig(): ClarkeConfig | null {
-  if (!_config) {
-    _config = resolveConfig();
-  }
   return _config;
 }
 
 /**
  * Auto-register this workspace with CLARKE if tenant/project IDs aren't set.
- *
- * Calls POST /admin/setup with the workspace path as the project name.
- * The endpoint is idempotent — same workspace path always returns the same IDs.
  */
 export async function ensureRegistered(
   config: ClarkeConfig
@@ -64,7 +45,6 @@ export async function ensureRegistered(
   if (config.tenantId && config.projectId) return config;
 
   try {
-    // Derive a project name from the workspace path
     const projectName = `openclaw:${config.workspace.replace(/\//g, ":")}`;
 
     const resp = await fetch(`${config.endpoint}/admin/setup`, {
@@ -86,7 +66,7 @@ export async function ensureRegistered(
       config.projectId = data.project_id;
     }
   } catch {
-    // Non-fatal — config will have empty IDs, API calls will fail gracefully
+    // Non-fatal
   }
 
   return config;
@@ -171,11 +151,7 @@ export async function listPolicies(config: ClarkeConfig): Promise<any[]> {
 }
 
 /**
- * Send a query through the CLARKE broker for retrieval-augmented context.
- *
- * Returns the broker's answer (which includes grounded context from
- * policies, decisions, docs, and episodic memory) plus the request_id
- * for feedback submission.
+ * Send a query through the CLARKE broker.
  */
 export async function queryBroker(
   config: ClarkeConfig,
@@ -230,12 +206,12 @@ export async function submitFeedback(
       signal: AbortSignal.timeout(5_000),
     });
   } catch {
-    // Best-effort, don't fail the interaction
+    // Best-effort
   }
 }
 
 /**
- * Build a concise greeting string for session start.
+ * Build a concise greeting string.
  */
 export async function fetchGreeting(config: ClarkeConfig): Promise<string> {
   const health = await fetchHealth(config);
