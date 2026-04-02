@@ -84,6 +84,51 @@ def fetch_session_context(config: dict, task_context: str | None = None) -> str:
     return response.text
 
 
+def fetch_greeting(config: dict) -> str:
+    """Build a concise CLARKE status line for session start."""
+    endpoint = config["clarke_endpoint"].rstrip("/")
+    tenant_id = config["tenant_id"]
+    status = "offline"
+    agents = 0
+    policies = 0
+
+    try:
+        resp = httpx.get(f"{endpoint}/health", timeout=5.0)
+        if resp.status_code == 200:
+            status = resp.json().get("status", "unknown")
+    except (httpx.ConnectError, httpx.TimeoutException):
+        return "CLARKE is offline | start with: make dev"
+
+    try:
+        resp = httpx.get(
+            f"{endpoint}/agents/profiles",
+            params={"tenant_id": tenant_id, "status": "active"},
+            timeout=5.0,
+        )
+        if resp.status_code == 200:
+            agents = len(resp.json())
+    except (httpx.ConnectError, httpx.HTTPStatusError):
+        pass
+
+    try:
+        resp = httpx.get(f"{endpoint}/policy", params={"tenant_id": tenant_id}, timeout=5.0)
+        if resp.status_code == 200:
+            policies = len(resp.json())
+    except (httpx.ConnectError, httpx.HTTPStatusError):
+        pass
+
+    parts = [f"CLARKE is {status}"]
+    stats = []
+    if agents:
+        stats.append(f"{agents} agent{'s' if agents != 1 else ''}")
+    if policies:
+        stats.append(f"{policies} {'policies' if policies != 1 else 'policy'}")
+    if stats:
+        parts.append(" | ".join(stats))
+    parts.append("/clarke for dashboard")
+    return " | ".join(parts)
+
+
 def main() -> None:
     agents_md = Path("AGENTS.md")
     if not agents_md.exists():
@@ -99,13 +144,16 @@ def main() -> None:
 
     try:
         context = fetch_session_context(config, task_context)
+        # Output context for system prompt injection
         print(context)
+        # Output greeting to stderr so it shows in the session start message
+        greeting = fetch_greeting(config)
+        print(greeting, file=sys.stderr)
     except httpx.HTTPStatusError as e:
         print(f"CLARKE session-context request failed: {e}", file=sys.stderr)
-        # Don't fail the session start — agent can still work without dynamic context
         sys.exit(0)
     except httpx.ConnectError:
-        print("CLARKE not reachable — using static context only", file=sys.stderr)
+        print("CLARKE is offline | start with: make dev", file=sys.stderr)
         sys.exit(0)
 
 
