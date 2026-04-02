@@ -15,6 +15,9 @@
 import { TTLCache } from "./cache.js";
 import {
   assessTurn,
+  createAgent,
+  createDecision,
+  createPolicy,
   ensureRegistered,
   fetchGreeting,
   fetchHealth,
@@ -27,6 +30,7 @@ import {
   renderSpawnContextMarkdown,
   setConfig,
   submitFeedback,
+  updateAgent,
 } from "./clarke-client.js";
 
 /** Shared context cache — 60s TTL. */
@@ -410,6 +414,216 @@ const clarkePlugin = {
         }
         const text = total === 0 ? "No pending proposals." : `${total} pending:\n${lines.join("\n")}`;
         return { content: [{ type: "text" as const, text }] };
+      },
+    }));
+
+    api.registerTool(() => ({
+      name: "clarke_create_agent",
+      description:
+        "Create a new CLARKE agent profile with capabilities, directives, and model config",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          name: { type: "string", description: "Agent display name" },
+          slug: {
+            type: "string",
+            description: "URL-safe identifier (e.g. 'code-reviewer')",
+          },
+          model_id: {
+            type: "string",
+            description: "Model ID (default: claude-sonnet-4-20250514)",
+          },
+          capabilities: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Agent capabilities (e.g. debugging, testing, code_review). Skills are matched to these.",
+          },
+          behavioral_directives: {
+            type: "array",
+            items: { type: "string" },
+            description: "Rules the agent must follow",
+          },
+          budget_tokens: {
+            type: "number",
+            description: "Token budget (default: 8000)",
+          },
+        },
+        required: ["name", "slug"],
+      },
+      async execute(_id: string, params: any) {
+        const config = getClarkeConfig();
+        if (!config)
+          return {
+            content: [{ type: "text" as const, text: "CLARKE not configured." }],
+          };
+        await ensureRegistered(config);
+        const result = await createAgent(config, params);
+        if (!result)
+          return {
+            content: [{ type: "text" as const, text: "Failed to create agent." }],
+          };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Agent created: ${result.name} (${result.slug}) — id: ${result.id}`,
+            },
+          ],
+        };
+      },
+    }));
+
+    api.registerTool(() => ({
+      name: "clarke_update_agent",
+      description: "Update an existing CLARKE agent profile",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          profile_id: {
+            type: "string",
+            description: "Agent profile ID to update",
+          },
+          name: { type: "string", description: "New display name" },
+          capabilities: {
+            type: "array",
+            items: { type: "string" },
+            description: "Updated capabilities list",
+          },
+          behavioral_directives: {
+            type: "array",
+            items: { type: "string" },
+            description: "Updated directives",
+          },
+          budget_tokens: { type: "number", description: "Updated token budget" },
+        },
+        required: ["profile_id"],
+      },
+      async execute(_id: string, params: any) {
+        const config = getClarkeConfig();
+        if (!config)
+          return {
+            content: [{ type: "text" as const, text: "CLARKE not configured." }],
+          };
+        await ensureRegistered(config);
+        const { profile_id, ...updates } = params;
+        const result = await updateAgent(config, profile_id, updates);
+        if (!result)
+          return {
+            content: [{ type: "text" as const, text: "Failed to update agent." }],
+          };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Agent updated: ${result.name} — v${result.version}`,
+            },
+          ],
+        };
+      },
+    }));
+
+    api.registerTool(() => ({
+      name: "clarke_create_decision",
+      description:
+        "Record a structured decision with rationale. Decisions have high trust in CLARKE context.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          title: { type: "string", description: "Decision title" },
+          rationale: {
+            type: "string",
+            description: "Why this decision was made",
+          },
+          decided_by: {
+            type: "string",
+            description: "Who made this decision",
+          },
+          alternatives: {
+            type: "array",
+            items: { type: "string" },
+            description: "Alternatives considered",
+          },
+        },
+        required: ["title", "rationale", "decided_by"],
+      },
+      async execute(_id: string, params: any) {
+        const config = getClarkeConfig();
+        if (!config)
+          return {
+            content: [{ type: "text" as const, text: "CLARKE not configured." }],
+          };
+        await ensureRegistered(config);
+        const result = await createDecision(
+          config,
+          params.title,
+          params.rationale,
+          params.decided_by,
+          params.alternatives
+        );
+        if (!result)
+          return {
+            content: [{ type: "text" as const, text: "Failed to record decision." }],
+          };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Decision recorded: "${result.title}" — id: ${result.id}`,
+            },
+          ],
+        };
+      },
+    }));
+
+    api.registerTool(() => ({
+      name: "clarke_create_policy",
+      description:
+        "Create a policy (highest trust in CLARKE). Auto-approved by default.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          content: {
+            type: "string",
+            description: "Policy content (rules, constraints)",
+          },
+          owner_id: {
+            type: "string",
+            description: "Policy owner ID",
+          },
+          auto_approve: {
+            type: "boolean",
+            description:
+              "If true (default), policy is immediately active. If false, requires approval.",
+          },
+        },
+        required: ["content", "owner_id"],
+      },
+      async execute(_id: string, params: any) {
+        const config = getClarkeConfig();
+        if (!config)
+          return {
+            content: [{ type: "text" as const, text: "CLARKE not configured." }],
+          };
+        await ensureRegistered(config);
+        const result = await createPolicy(
+          config,
+          params.content,
+          params.owner_id,
+          params.auto_approve !== false
+        );
+        if (!result)
+          return {
+            content: [{ type: "text" as const, text: "Failed to create policy." }],
+          };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Policy ${result.status}: id ${result.id}`,
+            },
+          ],
+        };
       },
     }));
 

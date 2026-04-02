@@ -1,6 +1,6 @@
 {
   "name": "openclaw-clarke",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "CLARKE memory and context engine — native OpenClaw plugin for brokered memory, context injection, and self-improving agents",
   "type": "module",
   "openclaw": {

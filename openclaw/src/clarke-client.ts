@@ -151,6 +151,124 @@ export async function listPolicies(config: ClarkeConfig): Promise<any[]> {
 }
 
 /**
+ * Create an agent profile in CLARKE.
+ */
+export async function createAgent(
+  config: ClarkeConfig,
+  profile: {
+    name: string;
+    slug: string;
+    model_id?: string;
+    capabilities?: string[];
+    behavioral_directives?: string[];
+    budget_tokens?: number;
+    tool_access?: string[];
+  }
+): Promise<any> {
+  try {
+    const resp = await fetch(`${config.endpoint}/agents/profiles`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: config.tenantId,
+        project_id: config.projectId,
+        ...profile,
+        model_id: profile.model_id || "claude-sonnet-4-20250514",
+        capabilities: profile.capabilities || [],
+        behavioral_directives: profile.behavioral_directives || [],
+        budget_tokens: profile.budget_tokens || 8000,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Update an agent profile in CLARKE.
+ */
+export async function updateAgent(
+  config: ClarkeConfig,
+  profileId: string,
+  updates: Record<string, unknown>
+): Promise<any> {
+  try {
+    const resp = await fetch(`${config.endpoint}/agents/profiles/${profileId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Create a decision in CLARKE.
+ */
+export async function createDecision(
+  config: ClarkeConfig,
+  title: string,
+  rationale: string,
+  decidedBy: string,
+  alternatives?: string[]
+): Promise<any> {
+  try {
+    const resp = await fetch(`${config.endpoint}/decisions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: config.tenantId,
+        project_id: config.projectId,
+        title,
+        rationale,
+        decided_by: decidedBy,
+        alternatives,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Create a policy in CLARKE.
+ */
+export async function createPolicy(
+  config: ClarkeConfig,
+  content: string,
+  ownerId: string,
+  autoApprove: boolean = true
+): Promise<any> {
+  try {
+    const resp = await fetch(`${config.endpoint}/policy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: config.tenantId,
+        content,
+        owner_id: ownerId,
+        auto_approve: autoApprove,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Send a query through the CLARKE broker.
  */
 export async function queryBroker(
