@@ -1,7 +1,7 @@
 """Workspace discovery — find OpenClaw config, existing content, and back up files."""
 
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -45,7 +45,7 @@ def discover_existing_content(workspace: Path) -> dict[str, Path]:
 
 def backup_workspace_files(workspace: Path, files: dict[str, Path]) -> Path:
     """Back up existing workspace files to .clarke-backup/ with timestamp."""
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
     backup_dir = workspace / ".clarke-backup" / timestamp
     backup_dir.mkdir(parents=True, exist_ok=True)
 
