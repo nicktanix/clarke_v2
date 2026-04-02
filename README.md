@@ -27,7 +27,7 @@ CLARKE gives your AI agents persistent memory, learned context, and self-improvi
 ### 1. Install
 
 ```bash
-git clone https://github.com/clarke-ai/clarke.git
+git clone https://github.com/nicktanix/clarke_v2.git
 cd clarke
 make install
 ```
@@ -107,7 +107,7 @@ CLARKE provides a one-shot installer for [OpenClaw](https://github.com/openclaw/
 **One-line install** (clones CLARKE, starts backend, configures everything):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/clarke-ai/clarke/main/setup.sh | bash -s -- \
+curl -fsSL https://raw.githubusercontent.com/nicktanix/clarke_v2/main/setup.sh | bash -s -- \
     --workspace /path/to/openclaw/workspace \
     --openai-key sk-your-key
 ```

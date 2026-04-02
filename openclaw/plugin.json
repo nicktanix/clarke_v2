@@ -2,7 +2,7 @@
   "name": "clarke",
   "version": "0.1.0",
   "description": "CLARKE — Cognitive Learning Augmentation Retrieval Knowledge Engine. Brokered memory and context management for OpenClaw agents.",
-  "homepage": "https://github.com/clarke-ai/clarke",
+  "homepage": "https://github.com/nicktanix/clarke_v2",
   "license": "Polyform-Noncommercial-1.0.0",
   "configSchema": {
     "endpoint": {

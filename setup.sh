@@ -3,10 +3,10 @@
 # CLARKE for OpenClaw — One-Line Installer
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/clarke-ai/clarke/main/setup.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/nicktanix/clarke_v2/main/setup.sh | bash
 #
 #   # Or with options:
-#   curl -fsSL https://raw.githubusercontent.com/clarke-ai/clarke/main/setup.sh | bash -s -- \
+#   curl -fsSL https://raw.githubusercontent.com/nicktanix/clarke_v2/main/setup.sh | bash -s -- \
 #       --workspace /path/to/openclaw/workspace \
 #       --openai-key sk-...
 #
@@ -21,7 +21,7 @@
 #
 # Environment variables:
 #   CLARKE_INSTALL_DIR   Where to clone CLARKE (default: ~/.clarke)
-#   CLARKE_REPO_URL      Git repository URL (default: https://github.com/clarke-ai/clarke.git)
+#   CLARKE_REPO_URL      Git repository URL (default: https://github.com/nicktanix/clarke_v2.git)
 #   CLARKE_BRANCH        Git branch to clone (default: main)
 #   OPENAI_API_KEY       Required for embeddings (can also pass --openai-key)
 #
@@ -46,7 +46,7 @@ step()  { echo -e "\n${BOLD}── $* ──${NC}"; }
 # ── Defaults ────────────────────────────────────────────────────────
 
 INSTALL_DIR="${CLARKE_INSTALL_DIR:-$HOME/.clarke}"
-REPO_URL="${CLARKE_REPO_URL:-https://github.com/clarke-ai/clarke.git}"
+REPO_URL="${CLARKE_REPO_URL:-https://github.com/nicktanix/clarke_v2.git}"
 BRANCH="${CLARKE_BRANCH:-main}"
 WORKSPACE=""
 OPENAI_KEY="${OPENAI_API_KEY:-}"
