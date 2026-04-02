@@ -229,6 +229,90 @@ UNIT
     echo "  loginctl enable-linger $(whoami)"
 }
 
+cmd_update() {
+    echo -e "${GREEN}Updating CLARKE...${NC}"
+
+    # Pull latest code
+    cd "$CLARKE_HOME"
+    info "Pulling latest..."
+    git pull --ff-only origin main 2>&1 | sed 's/^/  /' || warn "Git pull failed — continuing with current version"
+
+    # Rebuild Python
+    info "Installing Python dependencies..."
+    .venv/bin/pip install -e ".[dev]" --quiet 2>&1 | tail -1
+
+    # Run migrations
+    info "Running migrations..."
+    "$VENV_PYTHON" -m alembic upgrade head 2>&1 | grep -E "Running|already" | sed 's/^/  /' || true
+
+    # Rebuild TypeScript plugin
+    if [[ -d "$CLARKE_HOME/openclaw" ]]; then
+        info "Building OpenClaw plugin..."
+        cd "$CLARKE_HOME/openclaw"
+        npm install --quiet 2>&1 | tail -1
+        npm run build 2>&1 | tail -1
+    fi
+
+    ok "Update complete"
+    echo ""
+    echo "Restart to apply: clarke restart"
+}
+
+cmd_plugin_sync() {
+    local PLUGIN_SRC="$CLARKE_HOME/openclaw"
+    local PLUGIN_DST="$HOME/.openclaw/extensions/openclaw-clarke"
+
+    if [[ ! -d "$PLUGIN_SRC" ]]; then
+        err "Plugin source not found at $PLUGIN_SRC"
+        exit 1
+    fi
+
+    # Build first
+    info "Building plugin..."
+    cd "$PLUGIN_SRC"
+    npm run build 2>&1 | tail -1
+
+    if [[ ! -d "$PLUGIN_DST" ]]; then
+        err "Plugin not installed. Run: openclaw plugins install openclaw-clarke"
+        exit 1
+    fi
+
+    # Sync built files to installed location
+    info "Syncing to $PLUGIN_DST..."
+    cp -r "$PLUGIN_SRC/dist/"* "$PLUGIN_DST/dist/"
+    cp "$PLUGIN_SRC/openclaw.plugin.json" "$PLUGIN_DST/"
+    cp "$PLUGIN_SRC/package.json" "$PLUGIN_DST/"
+
+    # Sync skills if present
+    if [[ -d "$PLUGIN_SRC/skills" ]]; then
+        cp -r "$PLUGIN_SRC/skills" "$PLUGIN_DST/"
+    fi
+
+    local version
+    version=$(node -e "console.log(require('$PLUGIN_DST/package.json').version)" 2>/dev/null || echo "?")
+    ok "Plugin synced (v$version)"
+    echo ""
+    echo "Restart OpenClaw to apply: openclaw gateway restart"
+}
+
+cmd_plugin_publish() {
+    local PLUGIN_SRC="$CLARKE_HOME/openclaw"
+
+    if [[ ! -d "$PLUGIN_SRC" ]]; then
+        err "Plugin source not found at $PLUGIN_SRC"
+        exit 1
+    fi
+
+    cd "$PLUGIN_SRC"
+    info "Building..."
+    npm run build 2>&1 | tail -1
+
+    info "Publishing to npm..."
+    npm publish 2>&1 | sed 's/^/  /'
+
+    ok "Published. Install with: openclaw plugins install openclaw-clarke"
+}
+
 # ── Main ────────────────────────────────────────────────────────────
 
 case "${1:-help}" in
@@ -237,6 +321,9 @@ case "${1:-help}" in
     restart)         cmd_restart ;;
     status)          cmd_status ;;
     logs)            cmd_logs ;;
+    update)          cmd_update ;;
+    plugin-sync)     cmd_plugin_sync ;;
+    plugin-publish)  cmd_plugin_publish ;;
     docker-stop)     cmd_docker_stop ;;
     install-systemd) cmd_install_systemd ;;
     help|--help|-h)
@@ -250,6 +337,13 @@ case "${1:-help}" in
         echo "  restart          Restart API server"
         echo "  status           Show service status"
         echo "  logs             Tail API logs"
+        echo "  update           Pull latest, rebuild, migrate"
+        echo ""
+        echo "OpenClaw Plugin:"
+        echo "  plugin-sync      Build & sync plugin to OpenClaw extensions"
+        echo "  plugin-publish   Build & publish plugin to npm"
+        echo ""
+        echo "Infrastructure:"
         echo "  docker-stop      Stop Docker services"
         echo "  install-systemd  Install as systemd user service"
         ;;
