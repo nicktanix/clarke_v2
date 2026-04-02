@@ -211,6 +211,63 @@ export async function submitFeedback(
 }
 
 /**
+ * Ingest a document or session transcript into CLARKE.
+ */
+export async function ingestDocument(
+  config: ClarkeConfig,
+  filename: string,
+  content: string,
+  metadata?: Record<string, unknown>
+): Promise<boolean> {
+  try {
+    const resp = await fetch(`${config.endpoint}/ingest`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: config.tenantId,
+        project_id: config.projectId,
+        filename,
+        content_type: "text/markdown",
+        content,
+        metadata: { source: "openclaw_session", ...metadata },
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Store an episodic memory via the query endpoint.
+ * Sends the content as a query so CLARKE's episodic memory system
+ * classifies and stores it based on significance.
+ */
+export async function storeMemory(
+  config: ClarkeConfig,
+  userMessage: string,
+  assistantResponse: string
+): Promise<void> {
+  try {
+    // Send through the broker which triggers episodic storage
+    await fetch(`${config.endpoint}/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: config.tenantId,
+        project_id: config.projectId,
+        user_id: "openclaw-agent",
+        message: userMessage,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    // Best-effort
+  }
+}
+
+/**
  * Build a concise greeting string.
  */
 export async function fetchGreeting(config: ClarkeConfig): Promise<string> {

@@ -19,10 +19,12 @@ import {
   fetchHealth,
   fetchSessionContext,
   getClarkeConfig,
+  ingestDocument,
   listAgents,
   listPolicies,
   queryBroker,
   setConfig,
+  storeMemory,
   submitFeedback,
 } from "./clarke-client.js";
 
@@ -34,6 +36,15 @@ export const lastQueryResult = {
   requestId: "",
   query: "",
 };
+
+/** Buffers the current turn's messages for afterTurn storage. */
+const turnBuffer: { user: string; assistant: string } = {
+  user: "",
+  assistant: "",
+};
+
+/** Accumulates session interactions for compact-time summary. */
+const sessionInteractions: Array<{ user: string; assistant: string }> = [];
 
 const clarkePlugin = {
   id: "clarke",
@@ -119,24 +130,28 @@ const clarkePlugin = {
       },
 
       async ingest(params: any) {
-        // Capture messages for CLARKE's learning loop
-        const config = getClarkeConfig();
-        if (!config?.tenantId) return { ingested: false };
-
         const content = params.message?.content || params.message?.text || "";
         const role = params.message?.role || "unknown";
 
-        // If this is an assistant response and we have a pending query,
-        // submit implicit positive feedback
-        if (role === "assistant" && lastQueryResult.requestId) {
-          submitFeedback(
-            config,
-            lastQueryResult.requestId,
-            true,
-            "Implicit positive — agent responded without correction."
-          ).catch(() => {});
-          lastQueryResult.requestId = "";
-          lastQueryResult.query = "";
+        // Buffer messages for afterTurn processing
+        if (role === "user" && content) {
+          turnBuffer.user = content;
+          turnBuffer.assistant = "";
+        } else if (role === "assistant" && content) {
+          turnBuffer.assistant = content;
+
+          // Submit implicit positive feedback if we queried CLARKE
+          const config = getClarkeConfig();
+          if (config?.tenantId && lastQueryResult.requestId) {
+            submitFeedback(
+              config,
+              lastQueryResult.requestId,
+              true,
+              "Implicit positive — agent responded without correction."
+            ).catch(() => {});
+            lastQueryResult.requestId = "";
+            lastQueryResult.query = "";
+          }
         }
 
         return { ingested: true };
@@ -200,9 +215,66 @@ const clarkePlugin = {
         };
       },
 
-      async compact(params: any) {
-        // Invalidate cache on compaction so next assemble gets fresh context
+      async afterTurn() {
+        // Store significant interactions in CLARKE's episodic memory
+        const config = getClarkeConfig();
+        if (!config?.tenantId) return;
+        if (!turnBuffer.user || !turnBuffer.assistant) return;
+
+        // Only store substantial interactions (skip trivial ones)
+        if (turnBuffer.user.length < 20 && turnBuffer.assistant.length < 50) {
+          turnBuffer.user = "";
+          turnBuffer.assistant = "";
+          return;
+        }
+
+        // Add to session buffer for compact-time summary
+        sessionInteractions.push({
+          user: turnBuffer.user.substring(0, 500),
+          assistant: turnBuffer.assistant.substring(0, 500),
+        });
+
+        // Store in CLARKE via the broker (triggers episodic memory classification)
+        storeMemory(config, turnBuffer.user, turnBuffer.assistant).catch(
+          () => {}
+        );
+
+        // Reset turn buffer
+        turnBuffer.user = "";
+        turnBuffer.assistant = "";
+      },
+
+      async compact(_params: any) {
+        // On compaction/session end, store a session summary in CLARKE
+        const config = getClarkeConfig();
         contextCache.invalidate();
+
+        if (config?.tenantId && sessionInteractions.length > 0) {
+          // Build a session summary
+          const summary = [
+            `# Session Summary (${sessionInteractions.length} interactions)`,
+            "",
+            ...sessionInteractions.map(
+              (i, idx) =>
+                `## Turn ${idx + 1}\n**User:** ${i.user}\n**Agent:** ${i.assistant}`
+            ),
+          ].join("\n");
+
+          const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+          ingestDocument(
+            config,
+            `session_${timestamp}.md`,
+            summary,
+            {
+              source: "openclaw_session",
+              interaction_count: sessionInteractions.length,
+            }
+          ).catch(() => {});
+
+          // Clear session buffer
+          sessionInteractions.length = 0;
+        }
+
         return { ok: true, compacted: false };
       },
     }));
