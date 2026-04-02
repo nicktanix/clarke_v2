@@ -7,7 +7,7 @@ Gives your OpenClaw agent persistent memory, learned context, and self-improving
 ## Install
 
 ```bash
-openclaw plugins install openclaw-clarke
+openclaw plugins install @claw_clarke/openclaw-plugin
 ```
 
 ## What It Does
