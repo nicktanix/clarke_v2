@@ -1,11 +1,25 @@
 {
   "name": "clarke",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "CLARKE — Cognitive Learning Augmentation Retrieval Knowledge Engine. Brokered memory and context management for OpenClaw agents.",
   "homepage": "https://github.com/nicktanix/clarke_v2",
   "license": "Polyform-Noncommercial-1.0.0",
   "main": "dist/index.js",
-  "hooks": ["agent:bootstrap", "before_prompt_build", "before_agent_reply", "session_start", "llm_output"],
+  "skills": "skills/",
+  "hooks": [
+    "agent:bootstrap",
+    "before_prompt_build",
+    "before_agent_reply",
+    "session_start",
+    "llm_output"
+  ],
+  "commands": [
+    "clarke",
+    "clarke_status",
+    "clarke_recall",
+    "clarke_teach",
+    "clarke_review"
+  ],
   "configSchema": {
     "endpoint": {
       "type": "string",
@@ -14,11 +28,11 @@
     },
     "tenant_id": {
       "type": "string",
-      "description": "CLARKE tenant ID (auto-generated during install if not set)"
+      "description": "CLARKE tenant ID (auto-registered from workspace if not set)"
     },
     "project_id": {
       "type": "string",
-      "description": "CLARKE project ID (auto-generated during install if not set)"
+      "description": "CLARKE project ID (auto-registered from workspace if not set)"
     },
     "agent_slug": {
       "type": "string",
