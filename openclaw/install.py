@@ -148,12 +148,9 @@ def install(args: argparse.Namespace) -> None:
         else:
             config = read_config(config_path)
             server_def = get_clarke_mcp_server_def(endpoint)
-            # Find the first agent ID or use "main"
-            agent_list = config.get("agents", {}).get("list", [])
-            agent_id = agent_list[0]["id"] if agent_list else "main"
-            config = add_mcp_server(config, agent_id, server_def)
+            config = add_mcp_server(config, "clarke", server_def)
             write_config(config_path, config)
-            print(f"  Added CLARKE MCP server to agent '{agent_id}'")
+            print("  Added CLARKE MCP server to mcp.servers.clarke")
     else:
         print(f"  openclaw.json not found at {config_path} — skipping MCP registration")
         print("  You can manually add CLARKE MCP server to your config later")

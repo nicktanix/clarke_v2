@@ -9,9 +9,9 @@ def read_config(path: Path) -> dict:
     """Read openclaw.json, stripping JSON5 comments for compatibility."""
     text = path.read_text()
     # Strip single-line comments (// ...) but not inside strings
-    cleaned = re.sub(r'(?<!:)//.*$', '', text, flags=re.MULTILINE)
+    cleaned = re.sub(r"(?<!:)//.*$", "", text, flags=re.MULTILINE)
     # Strip trailing commas before } or ]
-    cleaned = re.sub(r',\s*([}\]])', r'\1', cleaned)
+    cleaned = re.sub(r",\s*([}\]])", r"\1", cleaned)
     return json.loads(cleaned)
 
 
@@ -20,40 +20,19 @@ def write_config(path: Path, config: dict) -> None:
     path.write_text(json.dumps(config, indent=2) + "\n")
 
 
-def add_mcp_server(config: dict, agent_id: str, server_def: dict) -> dict:
-    """Add a CLARKE MCP server to the specified agent's config."""
-    agents = config.get("agents", {})
-    agent_list = agents.get("list", [])
+def add_mcp_server(config: dict, server_name: str, server_def: dict) -> dict:
+    """Add a CLARKE MCP server to the top-level mcp.servers config.
 
-    for agent in agent_list:
-        if agent.get("id") == agent_id:
-            mcp = agent.setdefault("mcp", {})
-            servers = mcp.setdefault("servers", [])
+    OpenClaw expects MCP servers at the top level:
+        { "mcp": { "servers": { "server-name": { "command": ..., "args": ... } } } }
 
-            # Check if CLARKE already registered
-            for existing in servers:
-                if existing.get("name") == server_def["name"]:
-                    # Update in place
-                    existing.update(server_def)
-                    return config
+    NOT under agents.list[].mcp (that key is not recognized).
+    """
+    mcp = config.setdefault("mcp", {})
+    servers = mcp.setdefault("servers", {})
 
-            servers.append(server_def)
-            return config
-
-    # Agent not found — add to first agent or create one
-    if agent_list:
-        agent = agent_list[0]
-        mcp = agent.setdefault("mcp", {})
-        servers = mcp.setdefault("servers", [])
-        servers.append(server_def)
-    else:
-        agent_list.append({
-            "id": agent_id,
-            "name": "CLARKE Agent",
-            "mcp": {"servers": [server_def]},
-        })
-        agents["list"] = agent_list
-        config["agents"] = agents
+    # Add or update the server entry
+    servers[server_name] = server_def
 
     return config
 
@@ -61,7 +40,6 @@ def add_mcp_server(config: dict, agent_id: str, server_def: dict) -> dict:
 def get_clarke_mcp_server_def(endpoint: str = "http://localhost:8000") -> dict:
     """Build the CLARKE MCP server definition for openclaw.json."""
     return {
-        "name": "clarke",
         "command": "python",
         "args": ["-m", "clarke.mcp.server"],
         "env": {"CLARKE_API_URL": endpoint},
