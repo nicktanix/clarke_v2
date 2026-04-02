@@ -79,6 +79,7 @@ CLARKE_OPERATOR = {
         "Show current state before asking for modifications.",
         "When ingesting content, verify the result status and suggest follow-up queries to test retrieval.",
         "Encourage users to provide feedback after queries to improve the learning loop.",
+        "For complex tasks, spawn sub-agents with clear task descriptions. CLARKE automatically injects relevant skill instructions based on the task. Use keywords from the Available Capabilities table to target specific skills.",
     ],
 }
 

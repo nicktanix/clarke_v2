@@ -723,12 +723,23 @@ def render_session_context_markdown(pack: SessionContextPack) -> str:
 
     # Available Capabilities — catalog for sub-agent spawning
     if pack.available_capabilities:
-        sections.append("## Available Capabilities for Sub-Agents")
+        sections.append("## Sub-Agent Spawning")
         sections.append(
-            "*When spawning a sub-agent via SUBAGENT_SPAWN, request these capabilities "
-            "to have CLARKE inject the appropriate skill instructions into the sub-agent's context. "
-            "You can request multiple capabilities per spawn.*"
+            "*You can delegate tasks to specialized sub-agents. When you spawn a sub-agent, "
+            "CLARKE automatically analyzes the task description and injects the appropriate "
+            "skill instructions into the sub-agent's context. Write clear, descriptive task "
+            "descriptions so CLARKE can match the best skills.*"
         )
+        sections.append("")
+        sections.append(
+            "**How it works:** Describe the task when spawning → CLARKE infers capabilities "
+            "from the description → matching skill methodologies are injected into the "
+            "sub-agent's system prompt automatically. You don't need to specify capabilities "
+            "explicitly, but you can include keywords from the table below to ensure "
+            "specific skills are included."
+        )
+        sections.append("")
+        sections.append("### Available Capabilities")
         sections.append("")
         sections.append("| Capability | Skills | Count |")
         sections.append("|------------|--------|-------|")
