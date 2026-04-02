@@ -239,21 +239,30 @@ def install(args: argparse.Namespace) -> None:
 
 
 def _register_plugin(config: dict, config_path: Path) -> None:
-    """Register the CLARKE plugin in openclaw.json."""
-    plugins = config.setdefault("plugins", {})
-    native = plugins.setdefault("native", {})
+    """Register the CLARKE plugin in openclaw.json.
 
-    native["clarke"] = {
+    OpenClaw discovers plugins from paths listed in plugins.load.paths[].
+    Each path must contain a openclaw.plugin.json manifest. Plugin-specific
+    config goes under plugins.entries.<name>.config.
+    """
+    plugins = config.setdefault("plugins", {})
+
+    # Remove any stale "native" key from previous installs
+    plugins.pop("native", None)
+
+    plugins["enabled"] = True
+
+    # Add CLARKE plugin path to load paths (deduplicated)
+    load = plugins.setdefault("load", {})
+    paths = load.setdefault("paths", [])
+    plugin_path = str(PLUGIN_DIR)
+    if plugin_path not in paths:
+        paths.append(plugin_path)
+
+    # Add plugin entry config
+    entries = plugins.setdefault("entries", {})
+    entries["clarke"] = {
         "enabled": True,
-        "path": str(PLUGIN_DIR),
-        "main": "dist/index.js",
-        "hooks": [
-            "agent:bootstrap",
-            "before_prompt_build",
-            "before_agent_reply",
-            "session_start",
-            "llm_output",
-        ],
     }
 
     write_config(config_path, config)
