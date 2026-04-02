@@ -9,7 +9,7 @@ class CreateDecisionRequest(BaseModel):
     title: str
     rationale: str
     decided_by: str
-    alternatives: list[dict] | None = None
+    alternatives: list[dict] | list[str] | None = None
 
 
 class DecisionResponse(BaseModel):
