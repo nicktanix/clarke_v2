@@ -39,8 +39,21 @@ _TENANT_TABLES = [
 
 
 def upgrade() -> None:
+    conn = op.get_bind()
     for table in _TENANT_TABLES:
+        # Only apply RLS to tables that actually have a tenant_id column
+        result = conn.execute(
+            op.inline_literal(
+                "SELECT 1 FROM information_schema.columns "
+                f"WHERE table_name = '{table}' AND column_name = 'tenant_id'"
+            )
+        )
+        if not result.fetchone():
+            continue
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
+        op.execute(
+            f"DROP POLICY IF EXISTS tenant_isolation_{table} ON {table}"
+        )
         op.execute(
             f"CREATE POLICY tenant_isolation_{table} ON {table} "
             f"USING (tenant_id = current_setting('app.tenant_id', true))"

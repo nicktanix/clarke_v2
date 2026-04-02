@@ -324,7 +324,15 @@ else
 
     # Run migrations
     info "Running database migrations..."
-    .venv/bin/python -m alembic upgrade head 2>&1 | grep -E "^INFO|Running" || true
+    MIGRATE_OUTPUT=$(.venv/bin/python -m alembic upgrade head 2>&1)
+    MIGRATE_RC=$?
+    echo "$MIGRATE_OUTPUT" | grep -E "^INFO|Running"
+    if [[ $MIGRATE_RC -ne 0 ]]; then
+        err "Migration failed:"
+        echo "$MIGRATE_OUTPUT" | tail -5
+        err "Check the database and retry. You may need: cd $INSTALL_DIR && .venv/bin/python -m alembic upgrade head"
+        exit 1
+    fi
     ok "Migrations complete"
 
     # Start API server
