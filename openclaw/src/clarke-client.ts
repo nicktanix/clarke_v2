@@ -120,6 +120,70 @@ export async function listPolicies(config: ClarkeConfig): Promise<any[]> {
 }
 
 /**
+ * Send a query through the CLARKE broker for retrieval-augmented context.
+ *
+ * Returns the broker's answer (which includes grounded context from
+ * policies, decisions, docs, and episodic memory) plus the request_id
+ * for feedback submission.
+ */
+export async function queryBroker(
+  config: ClarkeConfig,
+  message: string,
+  sessionId?: string
+): Promise<{ answer: string; requestId: string; degradedMode: boolean } | null> {
+  try {
+    const resp = await fetch(`${config.endpoint}/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: config.tenantId,
+        project_id: config.projectId,
+        user_id: "openclaw-agent",
+        message,
+        session_id: sessionId,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as any;
+    return {
+      answer: data.answer || "",
+      requestId: data.request_id || "",
+      degradedMode: data.degraded_mode || false,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Submit feedback on a CLARKE query response.
+ */
+export async function submitFeedback(
+  config: ClarkeConfig,
+  requestId: string,
+  accepted: boolean,
+  notes?: string
+): Promise<void> {
+  try {
+    await fetch(`${config.endpoint}/feedback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        request_id: requestId,
+        tenant_id: config.tenantId,
+        user_id: "openclaw-agent",
+        accepted,
+        notes,
+      }),
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch {
+    // Best-effort, don't fail the interaction
+  }
+}
+
+/**
  * Build a concise greeting string for session start.
  */
 export async function fetchGreeting(config: ClarkeConfig): Promise<string> {

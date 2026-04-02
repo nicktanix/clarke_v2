@@ -5,7 +5,7 @@
   "homepage": "https://github.com/nicktanix/clarke_v2",
   "license": "Polyform-Noncommercial-1.0.0",
   "main": "dist/index.js",
-  "hooks": ["agent:bootstrap", "before_prompt_build", "session_start"],
+  "hooks": ["agent:bootstrap", "before_prompt_build", "before_agent_reply", "session_start", "llm_output"],
   "configSchema": {
     "endpoint": {
       "type": "string",
