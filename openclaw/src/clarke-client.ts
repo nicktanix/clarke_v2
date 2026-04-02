@@ -10,25 +10,36 @@ export interface ClarkeConfig {
   tenantId: string;
   projectId: string;
   agentSlug: string;
+  workspace: string;
 }
 
 let _config: ClarkeConfig | null = null;
 
 /**
  * Resolve CLARKE config from environment variables.
+ *
+ * If CLARKE_TENANT_ID and CLARKE_PROJECT_ID are set, uses them directly.
+ * Otherwise, auto-registers with the CLARKE backend using the workspace
+ * path to derive a project name (each workspace gets its own CLARKE project).
  */
 export function resolveConfig(): ClarkeConfig | null {
   const endpoint =
     process.env.CLARKE_API_URL || process.env.CLARKE_ENDPOINT || "";
-  const tenantId = process.env.CLARKE_TENANT_ID || "";
-  const projectId = process.env.CLARKE_PROJECT_ID || "";
   const agentSlug = process.env.CLARKE_AGENT_SLUG || "clarke-operator";
+  const workspace = process.env.OPENCLAW_WORKSPACE || process.cwd();
 
-  if (!endpoint || !tenantId || !projectId) {
-    return null;
+  if (!endpoint) return null;
+
+  let tenantId = process.env.CLARKE_TENANT_ID || "";
+  let projectId = process.env.CLARKE_PROJECT_ID || "";
+
+  // If IDs are pre-configured, use them
+  if (tenantId && projectId) {
+    return { endpoint, tenantId, projectId, agentSlug, workspace };
   }
 
-  return { endpoint, tenantId, projectId, agentSlug };
+  // Otherwise, we'll auto-register on first use (see ensureRegistered)
+  return { endpoint, tenantId, projectId, agentSlug, workspace };
 }
 
 /**
@@ -39,6 +50,46 @@ export function getClarkeConfig(): ClarkeConfig | null {
     _config = resolveConfig();
   }
   return _config;
+}
+
+/**
+ * Auto-register this workspace with CLARKE if tenant/project IDs aren't set.
+ *
+ * Calls POST /admin/setup with the workspace path as the project name.
+ * The endpoint is idempotent — same workspace path always returns the same IDs.
+ */
+export async function ensureRegistered(
+  config: ClarkeConfig
+): Promise<ClarkeConfig> {
+  if (config.tenantId && config.projectId) return config;
+
+  try {
+    // Derive a project name from the workspace path
+    const projectName = `openclaw:${config.workspace.replace(/\//g, ":")}`;
+
+    const resp = await fetch(`${config.endpoint}/admin/setup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_name: "openclaw",
+        project_name: projectName,
+      }),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (resp.ok) {
+      const data = (await resp.json()) as {
+        tenant_id: string;
+        project_id: string;
+      };
+      config.tenantId = data.tenant_id;
+      config.projectId = data.project_id;
+    }
+  } catch {
+    // Non-fatal — config will have empty IDs, API calls will fail gracefully
+  }
+
+  return config;
 }
 
 /**

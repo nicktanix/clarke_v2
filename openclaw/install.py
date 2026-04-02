@@ -101,17 +101,24 @@ def install(args: argparse.Namespace) -> None:
         if not dry_run and not check_clarke_health(endpoint):
             print(f"  WARNING: CLARKE not reachable at {endpoint}", file=sys.stderr)
 
-    # ── 3. Create tenant + project ──────────────────────────────────
+    # ── 3. Create tenant + project (keyed to workspace path) ─────────
+    # Each workspace gets its own CLARKE project. The tenant represents
+    # the OpenClaw installation. This means multi-agent setups with
+    # different workspaces get isolated CLARKE context automatically.
+    project_name = args.project_name
+    if project_name == "default":
+        # Derive project name from workspace path for automatic isolation
+        project_name = f"openclaw:{str(workspace).replace('/', ':')}"
+
     print("\n--- Tenant & Project ---")
+    print(f"  Workspace key: {project_name}")
     if dry_run:
         print("  [dry-run] Would create tenant/project")
         tenant_id = "dry-run-tenant-id"
         project_id = "dry-run-project-id"
     else:
         try:
-            tenant_id, project_id = ensure_tenant_project(
-                endpoint, args.tenant_name, args.project_name
-            )
+            tenant_id, project_id = ensure_tenant_project(endpoint, args.tenant_name, project_name)
             print(f"  Tenant:  {tenant_id}")
             print(f"  Project: {project_id}")
         except (httpx.ConnectError, httpx.HTTPStatusError) as e:
@@ -169,7 +176,9 @@ def install(args: argparse.Namespace) -> None:
 
     # ── 8. Write CLARKE env vars ────────────────────────────────────
     print("\n--- Environment Configuration ---")
-    _write_env_config(openclaw_root, endpoint, tenant_id, project_id, args.agent_slug, dry_run)
+    _write_env_config(
+        openclaw_root, workspace, endpoint, tenant_id, project_id, args.agent_slug, dry_run
+    )
 
     # ── 9. Install skills ───────────────────────────────────────────
     print("\n--- Installing Skills ---")
@@ -252,6 +261,7 @@ def _register_plugin(config: dict, config_path: Path) -> None:
 
 def _write_env_config(
     openclaw_root: Path,
+    workspace: Path,
     endpoint: str,
     tenant_id: str,
     project_id: str,
@@ -264,6 +274,7 @@ def _write_env_config(
         "CLARKE_TENANT_ID": tenant_id,
         "CLARKE_PROJECT_ID": project_id,
         "CLARKE_AGENT_SLUG": agent_slug,
+        "OPENCLAW_WORKSPACE": str(workspace),
     }
 
     env_file = openclaw_root / ".env"

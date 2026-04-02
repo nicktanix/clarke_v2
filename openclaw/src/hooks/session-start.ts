@@ -1,11 +1,17 @@
 /**
- * session_start hook — CLARKE greeting and cache invalidation.
+ * session_start hook — auto-register workspace, greeting, cache invalidation.
  *
- * Fires when a new session begins. Invalidates the context cache so the
- * next LLM call gets fresh context, and outputs a status greeting.
+ * Fires when a new session begins. If the workspace hasn't been registered
+ * with CLARKE yet (no TENANT_ID/PROJECT_ID env vars), auto-registers it
+ * using the workspace path as the project key. Then invalidates the context
+ * cache and outputs a greeting.
  */
 
-import { fetchGreeting, getClarkeConfig } from "../clarke-client.js";
+import {
+  ensureRegistered,
+  fetchGreeting,
+  getClarkeConfig,
+} from "../clarke-client.js";
 import { contextCache } from "../index.js";
 
 export async function handleSessionStart(event: any): Promise<void> {
@@ -15,9 +21,17 @@ export async function handleSessionStart(event: any): Promise<void> {
   const config = getClarkeConfig();
   if (!config) return;
 
+  // Auto-register this workspace if not already configured
+  await ensureRegistered(config);
+
+  if (!config.tenantId || !config.projectId) {
+    // Registration failed — still output a greeting
+    event.messages?.push("CLARKE is offline | start with: make dev");
+    return;
+  }
+
   const greeting = await fetchGreeting(config);
 
-  // Push greeting into session messages for the user to see
   if (event.messages && Array.isArray(event.messages)) {
     event.messages.push(greeting);
   }
