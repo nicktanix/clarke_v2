@@ -7,6 +7,7 @@ Create Date: 2026-04-01
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from alembic import op
 
 revision: str = "009"
@@ -43,17 +44,16 @@ def upgrade() -> None:
     for table in _TENANT_TABLES:
         # Only apply RLS to tables that actually have a tenant_id column
         result = conn.execute(
-            op.inline_literal(
+            sa.text(
                 "SELECT 1 FROM information_schema.columns "
-                f"WHERE table_name = '{table}' AND column_name = 'tenant_id'"
-            )
+                "WHERE table_name = :tbl AND column_name = 'tenant_id'"
+            ),
+            {"tbl": table},
         )
         if not result.fetchone():
             continue
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
-        op.execute(
-            f"DROP POLICY IF EXISTS tenant_isolation_{table} ON {table}"
-        )
+        op.execute(f"DROP POLICY IF EXISTS tenant_isolation_{table} ON {table}")
         op.execute(
             f"CREATE POLICY tenant_isolation_{table} ON {table} "
             f"USING (tenant_id = current_setting('app.tenant_id', true))"
