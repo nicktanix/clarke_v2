@@ -175,6 +175,62 @@ class SessionContextBuilder:
 
         return pack
 
+    async def build_for_capabilities(
+        self,
+        request: BuildSessionContextRequest,
+        capabilities: list[str],
+        session: AsyncSession,
+    ) -> dict:
+        """Build a lightweight session context for a sub-agent with specific capabilities.
+
+        Unlike build(), this doesn't require an agent profile. It fetches skills
+        matched to the requested capabilities and inherits policies from the tenant.
+        Returns a dict suitable for injection into the sub-agent's context.
+        """
+        settings = get_settings()
+        _degraded, qdrant_available = await self._check_health()
+
+        query_text = " ".join(capabilities)
+        if request.task_context:
+            query_text = f"{query_text} {request.task_context}"
+
+        budget_tokens = request.budget_tokens_override or settings.agent_context.default_session_budget_tokens
+        section_budget = allocate_session_budget(budget_tokens)
+
+        # Fetch skills and policies concurrently
+        import asyncio
+
+        skills_coro = self._fetch_skills(
+            request.tenant_id, request.project_id, capabilities, query_text, qdrant_available
+        )
+        policies_coro = self._fetch_policies(request.tenant_id)
+        skills, policies = await asyncio.gather(skills_coro, policies_coro)
+
+        # Rank skills (no profile ID for effectiveness — use defaults)
+        skills = await self._rank_and_cap_skills(skills, section_budget["skills"], "", session)
+
+        # Extract policy strings
+        policy_strings = [
+            p["content"] if isinstance(p, dict) else str(p)
+            for p in policies
+            if (isinstance(p, dict) and p.get("content")) or (isinstance(p, str) and p)
+        ]
+
+        return {
+            "capabilities": capabilities,
+            "skills": [
+                {
+                    "skill_name": s.skill_name,
+                    "content": s.content,
+                    "trigger_conditions": s.trigger_conditions,
+                    "priority": s.priority,
+                }
+                for s in skills
+            ],
+            "policies": policy_strings,
+            "task": request.task_context or "",
+        }
+
     async def _load_profile(
         self,
         request: BuildSessionContextRequest,

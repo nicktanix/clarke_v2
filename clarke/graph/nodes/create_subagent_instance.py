@@ -1,4 +1,4 @@
-"""Create sub-agent instance, build inherited context, record lineage."""
+"""Create sub-agent instance, build inherited context + skill context, record lineage."""
 
 from clarke.agents.spawn import create_agent
 from clarke.broker.lineage import record_lineage
@@ -10,7 +10,7 @@ logger = get_logger(__name__)
 
 
 async def create_subagent_instance(state: BrokerState) -> dict:
-    """Create AgentInstance, build inherited context, record lineage, return handle."""
+    """Create AgentInstance, build inherited context, fetch skills for capabilities, record lineage."""
     if not state.get("subagent_spawn_approved"):
         return {}
 
@@ -31,14 +31,41 @@ async def create_subagent_instance(state: BrokerState) -> dict:
                 current_depth=state.get("agent_depth", 0),
             )
 
-            # Build inherited context
+            # Build inherited context (policies, evidence from parent)
             handoff_mode = spawn_req.get("memory_scope_mode", "hybrid")
             handoff_evidence = spawn_req.get("handoff_evidence", [])
-            build_inherited_context(
+            inherited = build_inherited_context(
                 parent_context_pack=state.get("context_pack") or {},
                 handoff_mode=handoff_mode,
                 handoff_evidence=handoff_evidence,
             )
+
+            # Build session context with skills matched to requested capabilities
+            capabilities = spawn_req.get("capabilities", [])
+            session_context = None
+            if capabilities:
+                try:
+                    from clarke.agents.session_context import SessionContextBuilder
+                    from clarke.api.schemas.session_context import BuildSessionContextRequest
+
+                    builder = SessionContextBuilder()
+                    ctx_request = BuildSessionContextRequest(
+                        tenant_id=state["tenant_id"],
+                        project_id=state["project_id"],
+                        agent_slug=None,
+                        agent_profile_id=None,
+                        task_context=spawn_req.get("task", ""),
+                        capabilities_override=capabilities,
+                    )
+                    session_context = await builder.build_for_capabilities(
+                        ctx_request, capabilities, session
+                    )
+                except Exception:
+                    logger.warning(
+                        "subagent_skill_context_failed",
+                        agent_id=agent_id,
+                        exc_info=True,
+                    )
 
             # Record lineage
             if state.get("agent_id"):
@@ -54,10 +81,14 @@ async def create_subagent_instance(state: BrokerState) -> dict:
             await session.commit()
             break
 
-        return {
+        result = {
             "subagent_handle": handle.subagent_handle,
             "subagent_instance_id": agent_id,
         }
+        if session_context:
+            result["subagent_context"] = session_context
+
+        return result
 
     except Exception:
         logger.exception("create_subagent_failed")

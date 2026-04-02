@@ -8,11 +8,13 @@ from pydantic import BaseModel
 class SubagentSpawnRequest(BaseModel):
     type: Literal["SUBAGENT_SPAWN"] = "SUBAGENT_SPAWN"
     task: str
+    capabilities: list[str] = []
     required_memory: list[str] = []
     handoff_evidence: list[str] = []
     max_depth: int = 3
     timeout_minutes: int = 30
     memory_scope_mode: str = "hybrid"
+    budget_tokens: int | None = None
 
 
 class SubagentResult(BaseModel):

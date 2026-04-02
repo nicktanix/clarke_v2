@@ -51,6 +51,7 @@ class BuildSessionContextRequest(BaseModel):
     session_id: str = Field(default_factory=generate_request_id)
     task_context: str | None = None
     budget_tokens_override: int | None = None
+    capabilities_override: list[str] | None = None
     format: str = "json"  # "json" | "markdown"
 
 
