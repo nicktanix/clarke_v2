@@ -8,18 +8,44 @@ import yaml
 
 
 def find_workspace(start_path: Path | None = None) -> Path | None:
-    """Walk up from start_path looking for openclaw.json. Returns workspace root or None."""
+    """Find the OpenClaw agent workspace directory.
+
+    OpenClaw stores agent files (SOUL.md, AGENTS.md, etc.) in a workspace/
+    subdirectory under the config root. This function:
+    1. Walks up from start_path looking for openclaw.json
+    2. If found, checks for a workspace/ subdirectory containing SOUL.md
+    3. Returns the workspace path (the directory with the actual agent files)
+    """
     path = (start_path or Path.cwd()).resolve()
+
+    # If start_path itself contains SOUL.md, it's the workspace
+    if (path / "SOUL.md").exists():
+        return path
+
+    # Walk up looking for openclaw.json
     for parent in [path, *path.parents]:
         if (parent / "openclaw.json").exists():
+            # Check for workspace/ subdirectory (standard OpenClaw layout)
+            ws = parent / "workspace"
+            if ws.exists() and (ws / "SOUL.md").exists():
+                return ws
+            # Fall back to the config root if no workspace/ subdir
             return parent
+
     return None
 
 
 def find_openclaw_config(workspace: Path) -> Path | None:
-    """Return path to openclaw.json if it exists."""
+    """Return path to openclaw.json — may be in workspace or its parent."""
+    # Check the workspace itself
     config = workspace / "openclaw.json"
-    return config if config.exists() else None
+    if config.exists():
+        return config
+    # Check the parent (workspace/ is a subdirectory of the config root)
+    config = workspace.parent / "openclaw.json"
+    if config.exists():
+        return config
+    return None
 
 
 def discover_existing_content(workspace: Path) -> dict[str, Path]:

@@ -52,6 +52,7 @@ from openclaw.lib.context_writer import (  # noqa: E402
 from openclaw.lib.discovery import (  # noqa: E402
     backup_workspace_files,
     discover_existing_content,
+    find_openclaw_config,
     find_workspace,
     parse_soul_md,
 )
@@ -141,18 +142,18 @@ def install(args: argparse.Namespace) -> None:
 
     # ── 6. Register MCP server in openclaw.json ─────────────────────
     print("\n--- MCP Registration ---")
-    config_path = workspace / "openclaw.json"
-    if config_path.exists():
+    config_path = find_openclaw_config(workspace)
+    if config_path:
         if dry_run:
-            print("  [dry-run] Would add CLARKE MCP server to openclaw.json")
+            print(f"  [dry-run] Would add CLARKE MCP server to {config_path}")
         else:
             config = read_config(config_path)
             server_def = get_clarke_mcp_server_def(endpoint)
             config = add_mcp_server(config, "clarke", server_def)
             write_config(config_path, config)
-            print("  Added CLARKE MCP server to mcp.servers.clarke")
+            print(f"  Added CLARKE MCP server to {config_path}")
     else:
-        print(f"  openclaw.json not found at {config_path} — skipping MCP registration")
+        print("  openclaw.json not found — skipping MCP registration")
         print("  You can manually add CLARKE MCP server to your config later")
 
     # ── 7. Install skills ───────────────────────────────────────────
