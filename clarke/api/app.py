@@ -15,6 +15,7 @@ from clarke.api.routes import (
     feedback,
     health,
     ingest,
+    memory,
     policy,
     query,
 )
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
     app.include_router(policy.router)
     app.include_router(decisions.router)
     app.include_router(agents.router)
+    app.include_router(memory.router)
     app.include_router(directives.router)
     app.include_router(admin.router)
 

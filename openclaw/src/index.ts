@@ -14,17 +14,16 @@
 
 import { TTLCache } from "./cache.js";
 import {
+  assessTurn,
   ensureRegistered,
   fetchGreeting,
   fetchHealth,
   fetchSessionContext,
   getClarkeConfig,
-  ingestDocument,
   listAgents,
   listPolicies,
   queryBroker,
   setConfig,
-  storeMemory,
   submitFeedback,
 } from "./clarke-client.js";
 
@@ -43,8 +42,14 @@ const turnBuffer: { user: string; assistant: string } = {
   assistant: "",
 };
 
-/** Accumulates session interactions for compact-time summary. */
-const sessionInteractions: Array<{ user: string; assistant: string }> = [];
+/** Memory types that warrant refreshing the context cache. */
+const CONTEXT_REFRESH_TYPES = new Set([
+  "decision",
+  "correction",
+  "preference",
+  "code_pattern",
+  "bug_fix",
+]);
 
 const clarkePlugin = {
   id: "openclaw-clarke",
@@ -231,65 +236,34 @@ const clarkePlugin = {
       },
 
       async afterTurn() {
-        // Store significant interactions in CLARKE's episodic memory
+        // Assess the turn for memory-worthy content and store automatically
         const config = getClarkeConfig();
         if (!config?.tenantId) return;
         if (!turnBuffer.user || !turnBuffer.assistant) return;
 
-        // Only store substantial interactions (skip trivial ones)
-        if (turnBuffer.user.length < 20 && turnBuffer.assistant.length < 50) {
-          turnBuffer.user = "";
-          turnBuffer.assistant = "";
-          return;
-        }
+        const userMsg = turnBuffer.user;
+        const assistantMsg = turnBuffer.assistant;
 
-        // Add to session buffer for compact-time summary
-        sessionInteractions.push({
-          user: turnBuffer.user.substring(0, 500),
-          assistant: turnBuffer.assistant.substring(0, 500),
-        });
-
-        // Store in CLARKE via the broker (triggers episodic memory classification)
-        storeMemory(config, turnBuffer.user, turnBuffer.assistant).catch(
-          () => {}
-        );
-
-        // Reset turn buffer
+        // Reset buffer before async work
         turnBuffer.user = "";
         turnBuffer.assistant = "";
+
+        // Send to CLARKE for significance classification + auto-storage
+        const result = await assessTurn(config, userMsg, assistantMsg).catch(
+          () => null
+        );
+
+        // If something memory-worthy was stored, refresh context cache
+        // so the next LLM call sees the updated memory
+        if (result?.stored && CONTEXT_REFRESH_TYPES.has(result.memoryType)) {
+          contextCache.invalidate();
+        }
       },
 
       async compact(_params: any) {
-        // On compaction/session end, store a session summary in CLARKE
-        const config = getClarkeConfig();
+        // Compaction fires when tokens are high — just clear cached context
+        // so the next assemble() fetches fresh from CLARKE
         contextCache.invalidate();
-
-        if (config?.tenantId && sessionInteractions.length > 0) {
-          // Build a session summary
-          const summary = [
-            `# Session Summary (${sessionInteractions.length} interactions)`,
-            "",
-            ...sessionInteractions.map(
-              (i, idx) =>
-                `## Turn ${idx + 1}\n**User:** ${i.user}\n**Agent:** ${i.assistant}`
-            ),
-          ].join("\n");
-
-          const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-          ingestDocument(
-            config,
-            `session_${timestamp}.md`,
-            summary,
-            {
-              source: "openclaw_session",
-              interaction_count: sessionInteractions.length,
-            }
-          ).catch(() => {});
-
-          // Clear session buffer
-          sessionInteractions.length = 0;
-        }
-
         return { ok: true, compacted: false };
       },
     }));

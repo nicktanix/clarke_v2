@@ -240,30 +240,52 @@ export async function ingestDocument(
 }
 
 /**
- * Store an episodic memory via the query endpoint.
- * Sends the content as a query so CLARKE's episodic memory system
- * classifies and stores it based on significance.
+ * Result from the memory assessment endpoint.
  */
-export async function storeMemory(
+export interface AssessResult {
+  stored: boolean;
+  memoryType: string;
+  significanceScore: number;
+  reason: string;
+}
+
+/**
+ * Assess a user/assistant turn for memory significance.
+ * CLARKE classifies the turn and stores it if worthy.
+ * Returns the classification result so the caller can decide
+ * whether to refresh context.
+ */
+export async function assessTurn(
   config: ClarkeConfig,
   userMessage: string,
-  assistantResponse: string
-): Promise<void> {
+  assistantMessage: string,
+  sessionId?: string
+): Promise<AssessResult | null> {
   try {
-    // Send through the broker which triggers episodic storage
-    await fetch(`${config.endpoint}/query`, {
+    const resp = await fetch(`${config.endpoint}/memory/assess`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         tenant_id: config.tenantId,
         project_id: config.projectId,
         user_id: "openclaw-agent",
-        message: userMessage,
+        agent_slug: config.agentSlug,
+        session_id: sessionId,
+        user_message: userMessage,
+        assistant_message: assistantMessage,
       }),
       signal: AbortSignal.timeout(15_000),
     });
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as any;
+    return {
+      stored: data.stored,
+      memoryType: data.memory_type,
+      significanceScore: data.significance_score,
+      reason: data.reason,
+    };
   } catch {
-    // Best-effort
+    return null;
   }
 }
 

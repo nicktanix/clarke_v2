@@ -27,6 +27,11 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 NC='\033[0m'
 
+info() { echo -e "${GREEN}  $*${NC}"; }
+warn() { echo -e "${YELLOW}  $*${NC}"; }
+ok()   { echo -e "${GREEN}✓ $*${NC}"; }
+err()  { echo -e "${RED}✗ $*${NC}" >&2; }
+
 _get_pid() {
     local pid=""
     if [[ -f "$PID_FILE" ]]; then
