@@ -1,20 +1,15 @@
 #!/usr/bin/env python3
 """One-shot CLARKE installer for OpenClaw.
 
-Sets up the full CLARKE memory and context engine for an OpenClaw workspace:
-1. Starts backend services (PostgreSQL, Qdrant, Neo4j)
-2. Creates tenant and project
-3. Discovers and backs up existing workspace content
-4. Ingests existing SOUL.md/AGENTS.md into CLARKE
-5. Registers CLARKE MCP server in openclaw.json
-6. Installs CLARKE skills and hooks
-7. Bootstraps agent profiles and superpowers skills
-8. Writes CLARKE-augmented SOUL.md and AGENTS.md
+Works for both fresh installs and reconfiguring existing ones.
 
-Usage:
+Fresh install:
     python openclaw/install.py --workspace /path/to/openclaw/workspace
 
-    # Or with CLARKE backend already running:
+Reconfigure existing:
+    python openclaw/install.py --workspace /path/to/openclaw/workspace --reconfigure
+
+With CLARKE backend already running:
     python openclaw/install.py --workspace /path/to/workspace --skip-backend
 """
 
@@ -57,8 +52,10 @@ PLUGIN_DIR = Path(__file__).resolve().parent
 
 
 def install(args: argparse.Namespace) -> None:
-    """Run the full installation."""
-    print("=== CLARKE for OpenClaw — Installation ===\n")
+    """Run the full installation or reconfiguration."""
+    reconfigure = args.reconfigure
+    mode = "Reconfiguration" if reconfigure else "Installation"
+    print(f"=== CLARKE for OpenClaw — {mode} ===\n")
 
     dry_run = args.dry_run
     endpoint = args.endpoint
@@ -72,6 +69,11 @@ def install(args: argparse.Namespace) -> None:
         print("No OpenClaw workspace found. Specify --workspace or run from an OpenClaw directory.")
         sys.exit(1)
     print(f"  Workspace: {workspace}")
+
+    # Find the OpenClaw config root (parent of workspace/ if applicable)
+    config_path = find_openclaw_config(workspace)
+    openclaw_root = config_path.parent if config_path else workspace.parent
+    print(f"  Config:    {config_path or 'not found'}")
 
     # ── 2. Backend setup ────────────────────────────────────────────
     if not args.skip_backend:
@@ -117,28 +119,30 @@ def install(args: argparse.Namespace) -> None:
             sys.exit(1)
 
     # ── 4. Discover + backup existing content ───────────────────────
-    print("\n--- Workspace Discovery ---")
-    existing = discover_existing_content(workspace)
-    if existing:
-        found = [k for k in existing if not k.endswith("_dir")]
-        print(f"  Found: {', '.join(found) if found else 'no agent files'}")
+    if not reconfigure:
+        print("\n--- Workspace Discovery ---")
+        existing = discover_existing_content(workspace)
+        if existing:
+            found = [k for k in existing if not k.endswith("_dir")]
+            print(f"  Found: {', '.join(found) if found else 'no agent files'}")
+            if not dry_run and not args.skip_backup:
+                backup_dir = backup_workspace_files(workspace, existing)
+                print(f"  Backups in: {backup_dir}")
+            elif dry_run:
+                print("  [dry-run] Would back up existing files")
+        else:
+            existing = {}
+            print("  No existing agent files found")
 
-        if not dry_run and not args.skip_backup:
-            backup_dir = backup_workspace_files(workspace, existing)
-            print(f"  Backups in: {backup_dir}")
-        elif dry_run:
-            print("  [dry-run] Would back up existing files")
+        # ── 5. Ingest existing content into CLARKE ──────────────────
+        if not dry_run and not args.skip_backend and existing:
+            print("\n--- Ingesting Existing Content ---")
+            _ingest_existing_content(workspace, existing, endpoint, tenant_id, project_id)
     else:
-        print("  No existing agent files found")
-
-    # ── 5. Ingest existing content into CLARKE ──────────────────────
-    if not dry_run and not args.skip_backend:
-        print("\n--- Ingesting Existing Content ---")
-        _ingest_existing_content(workspace, existing, endpoint, tenant_id, project_id)
+        print("\n--- Skipping backup/ingestion (reconfigure mode) ---")
 
     # ── 6. Register MCP server in openclaw.json ─────────────────────
     print("\n--- MCP Registration ---")
-    config_path = find_openclaw_config(workspace)
     if config_path:
         if dry_run:
             print(f"  [dry-run] Would add CLARKE MCP server to {config_path}")
@@ -150,9 +154,24 @@ def install(args: argparse.Namespace) -> None:
             print(f"  Added CLARKE MCP server to {config_path}")
     else:
         print("  openclaw.json not found — skipping MCP registration")
-        print("  You can manually add CLARKE MCP server to your config later")
 
-    # ── 7. Install skills ───────────────────────────────────────────
+    # ── 7. Register plugin in openclaw.json ─────────────────────────
+    print("\n--- Plugin Registration ---")
+    if config_path:
+        if dry_run:
+            print(f"  [dry-run] Would register CLARKE plugin in {config_path}")
+        else:
+            config = read_config(config_path)
+            _register_plugin(config, config_path)
+            print(f"  Registered CLARKE plugin in {config_path}")
+    else:
+        print("  openclaw.json not found — skipping plugin registration")
+
+    # ── 8. Write CLARKE env vars ────────────────────────────────────
+    print("\n--- Environment Configuration ---")
+    _write_env_config(openclaw_root, endpoint, tenant_id, project_id, args.agent_slug, dry_run)
+
+    # ── 9. Install skills ───────────────────────────────────────────
     print("\n--- Installing Skills ---")
     skills_src = PLUGIN_DIR / "skills"
     skills_dst = workspace / "skills"
@@ -175,68 +194,141 @@ def install(args: argparse.Namespace) -> None:
             print(f"  Installed skill: {skill_dir.name}")
         installed_skills += 1
 
-    # ── 8. Build TypeScript plugin ────────────────────────────────
+    # ── 10. Build TypeScript plugin ─────────────────────────────────
     print("\n--- Building Plugin ---")
     if dry_run:
         print("  [dry-run] Would run npm install && npm run build")
     else:
-        try:
-            subprocess.run(
-                ["npm", "install"],
-                cwd=PLUGIN_DIR,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            subprocess.run(
-                ["npm", "run", "build"],
-                cwd=PLUGIN_DIR,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-            print("  TypeScript plugin built successfully")
-        except subprocess.CalledProcessError as e:
-            print(f"  Plugin build failed: {e.stderr[:200]}", file=sys.stderr)
-            print("  Context injection will not work until the plugin is built", file=sys.stderr)
-        except FileNotFoundError:
-            print("  npm not found — skipping plugin build", file=sys.stderr)
-            print("  Run: cd openclaw && npm install && npm run build", file=sys.stderr)
+        _build_plugin()
 
-    # ── 9. Set environment for plugin ──────────────────────────────
-    print("\n--- Configuring Plugin Environment ---")
-    env_note = (
-        f"  CLARKE_API_URL={endpoint}\n"
-        f"  CLARKE_TENANT_ID={tenant_id}\n"
-        f"  CLARKE_PROJECT_ID={project_id}\n"
-        f"  CLARKE_AGENT_SLUG={args.agent_slug}"
-    )
-    if dry_run:
-        print(f"  [dry-run] Plugin needs these env vars:\n{env_note}")
-    else:
-        print("  The plugin reads config from environment variables.")
-        print(f"  Add these to your OpenClaw environment or .env:\n{env_note}")
-
-    # ── 10. Bootstrap CLARKE (agents + skills into Qdrant) ──────────
+    # ── 11. Bootstrap CLARKE (agents + skills into Qdrant) ──────────
     if not dry_run and not args.skip_backend:
         print("\n--- CLARKE Bootstrap ---")
         _bootstrap_clarke(endpoint, tenant_id, project_id, args.skip_superpowers)
 
     # ── Report ──────────────────────────────────────────────────────
     print("\n" + "=" * 50)
-    print("CLARKE installation complete!")
+    print(f"CLARKE {mode.lower()} complete!")
     print(f"  Workspace:    {workspace}")
     print(f"  Endpoint:     {endpoint}")
     print(f"  Tenant:       {tenant_id}")
     print(f"  Project:      {project_id}")
     print(f"  Agent:        {args.agent_slug}")
     print(f"  Skills:       {installed_skills}")
+    print(f"  Plugin:       {PLUGIN_DIR / 'dist' / 'index.js'}")
     print()
-    print("Next steps:")
-    print("  1. Start your OpenClaw agent")
-    print("  2. Try: /clarke (dashboard)")
-    print("  3. Try: /clarke-recall 'what does CLARKE know'")
-    print("  4. Try: /clarke-teach to record decisions and policies")
+    print("How it works:")
+    print("  - before_prompt_build: CLARKE context injected into every system prompt")
+    print("  - before_agent_reply:  User queries augmented with retrieval context")
+    print("  - llm_output:          Interactions fed back for learning")
+    print()
+    print("Commands:")
+    print("  /clarke          — system dashboard")
+    print("  /clarke-teach    — record decisions and corrections")
+    print("  /clarke-recall   — query CLARKE's memory")
+    print("  /clarke-review   — approve self-improvement proposals")
+
+
+def _register_plugin(config: dict, config_path: Path) -> None:
+    """Register the CLARKE plugin in openclaw.json."""
+    plugins = config.setdefault("plugins", {})
+    native = plugins.setdefault("native", {})
+
+    native["clarke"] = {
+        "enabled": True,
+        "path": str(PLUGIN_DIR),
+        "main": "dist/index.js",
+        "hooks": [
+            "agent:bootstrap",
+            "before_prompt_build",
+            "before_agent_reply",
+            "session_start",
+            "llm_output",
+        ],
+    }
+
+    write_config(config_path, config)
+
+
+def _write_env_config(
+    openclaw_root: Path,
+    endpoint: str,
+    tenant_id: str,
+    project_id: str,
+    agent_slug: str,
+    dry_run: bool,
+) -> None:
+    """Write CLARKE env vars to the OpenClaw .env file."""
+    env_vars = {
+        "CLARKE_API_URL": endpoint,
+        "CLARKE_TENANT_ID": tenant_id,
+        "CLARKE_PROJECT_ID": project_id,
+        "CLARKE_AGENT_SLUG": agent_slug,
+    }
+
+    env_file = openclaw_root / ".env"
+
+    if dry_run:
+        print("  [dry-run] Would write to .env:")
+        for k, v in env_vars.items():
+            print(f"    {k}={v}")
+        return
+
+    # Read existing .env if present
+    existing_lines: list[str] = []
+    existing_keys: set[str] = set()
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            key = line.split("=", 1)[0].strip()
+            if key in env_vars:
+                # Update existing CLARKE vars
+                existing_lines.append(f"{key}={env_vars[key]}")
+                existing_keys.add(key)
+            else:
+                existing_lines.append(line)
+
+    # Ensure trailing newline before appending
+    if existing_lines and existing_lines[-1] != "":
+        existing_lines.append("")
+
+    # Append any new CLARKE vars
+    new_vars = {k: v for k, v in env_vars.items() if k not in existing_keys}
+    if new_vars:
+        existing_lines.append("# CLARKE Plugin Configuration")
+        for k, v in new_vars.items():
+            existing_lines.append(f"{k}={v}")
+
+    env_file.write_text("\n".join(existing_lines) + "\n")
+
+    for k, v in env_vars.items():
+        status = "updated" if k in existing_keys else "added"
+        print(f"  {status}: {k}={v}")
+
+
+def _build_plugin() -> None:
+    """Build the TypeScript plugin."""
+    try:
+        subprocess.run(
+            ["npm", "install"],
+            cwd=PLUGIN_DIR,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["npm", "run", "build"],
+            cwd=PLUGIN_DIR,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        print("  TypeScript plugin built successfully")
+    except subprocess.CalledProcessError as e:
+        print(f"  Plugin build failed: {e.stderr[:200]}", file=sys.stderr)
+        print("  Run: cd openclaw && npm install && npm run build", file=sys.stderr)
+    except FileNotFoundError:
+        print("  npm not found — skipping plugin build", file=sys.stderr)
+        print("  Run: cd openclaw && npm install && npm run build", file=sys.stderr)
 
 
 def _ingest_existing_content(
@@ -247,7 +339,7 @@ def _ingest_existing_content(
     project_id: str,
 ) -> None:
     """Ingest existing SOUL.md/AGENTS.md content into CLARKE."""
-    for name in ("SOUL.md", "AGENTS.md"):
+    for name in ("SOUL.md", "AGENTS.md", "TOOLS.md", "USER.md", "IDENTITY.md"):
         if name not in existing:
             continue
         path = existing[name]
@@ -255,7 +347,6 @@ def _ingest_existing_content(
         if not content.strip():
             continue
 
-        # Ingest as a document
         try:
             resp = httpx.post(
                 f"{endpoint}/ingest",
@@ -298,14 +389,13 @@ def _ingest_existing_content(
                 if resp.status_code in (200, 201):
                     print(f"  Created agent profile from SOUL.md: '{soul_data['name']}'")
             except (httpx.ConnectError, httpx.HTTPStatusError):
-                pass  # Non-critical
+                pass
 
 
 def _bootstrap_clarke(
     endpoint: str, tenant_id: str, project_id: str, skip_superpowers: bool
 ) -> None:
     """Run the CLARKE bootstrap to create operator agent and ingest skills."""
-    # Create operator agent
     try:
         resp = httpx.get(
             f"{endpoint}/agents/profiles",
@@ -331,7 +421,7 @@ def _bootstrap_clarke(
     except Exception as e:
         print(f"  Agent bootstrap warning: {e}", file=sys.stderr)
 
-    # Ingest skills into CLARKE's Qdrant
+    # Ingest skills
     skills_dir = PLUGIN_DIR / "skills"
     ingested = 0
     for skill_dir in sorted(skills_dir.iterdir()):
@@ -340,14 +430,11 @@ def _bootstrap_clarke(
         skill_file = skill_dir / "SKILL.md"
         if not skill_file.exists():
             continue
-
         content = skill_file.read_text()
-        # Strip frontmatter
         if content.startswith("---"):
             parts = content.split("---", 2)
             if len(parts) >= 3:
                 content = parts[2].strip()
-
         try:
             resp = httpx.post(
                 f"{endpoint}/agents/skills",
@@ -365,10 +452,9 @@ def _bootstrap_clarke(
             resp.raise_for_status()
             ingested += 1
         except (httpx.ConnectError, httpx.HTTPStatusError):
-            pass  # Non-critical
+            pass
     print(f"  Ingested {ingested} skills into CLARKE")
 
-    # Superpowers (reuse bootstrap logic)
     if not skip_superpowers:
         try:
             from scripts.bootstrap_clarke_skills import (
@@ -376,6 +462,8 @@ def _bootstrap_clarke(
                 find_superpowers_agents,
                 find_superpowers_skills,
                 ingest_skill,
+                parse_agent_file,
+                parse_skill_file,
                 superpowers_agent_to_profile,
                 superpowers_skill_metadata,
                 upsert_agent_profile,
@@ -385,15 +473,11 @@ def _bootstrap_clarke(
             sp_dir = clone_superpowers()
             if sp_dir:
                 for name, path in find_superpowers_agents(sp_dir):
-                    from scripts.bootstrap_clarke_skills import parse_agent_file
-
                     fm, body = parse_agent_file(path)
                     profile = superpowers_agent_to_profile(name, fm, body)
                     upsert_agent_profile(endpoint, tenant_id, project_id, profile, dry_run=False)
 
                 for name, path in find_superpowers_skills(sp_dir):
-                    from scripts.bootstrap_clarke_skills import parse_skill_file
-
                     fm, content = parse_skill_file(path)
                     metadata = superpowers_skill_metadata(name, fm)
                     ingest_skill(
@@ -406,9 +490,7 @@ def _bootstrap_clarke(
                         dry_run=False,
                     )
 
-                import shutil as _shutil
-
-                _shutil.rmtree(sp_dir, ignore_errors=True)
+                shutil.rmtree(sp_dir, ignore_errors=True)
                 print("  Superpowers skills ingested")
         except Exception as e:
             print(f"  Superpowers bootstrap warning: {e}", file=sys.stderr)
@@ -416,7 +498,7 @@ def _bootstrap_clarke(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Install CLARKE memory engine into an OpenClaw workspace"
+        description="Install or reconfigure CLARKE for an OpenClaw workspace"
     )
     parser.add_argument(
         "--workspace", type=str, help="OpenClaw workspace path (default: auto-detect)"
@@ -430,6 +512,11 @@ def main() -> None:
     )
     parser.add_argument("--skip-backup", action="store_true", help="Skip backing up existing files")
     parser.add_argument("--skip-superpowers", action="store_true", help="Skip superpowers clone")
+    parser.add_argument(
+        "--reconfigure",
+        action="store_true",
+        help="Reconfigure existing install (skip backup/ingestion, update config + plugin + skills)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Show what would be done")
     args = parser.parse_args()
 
