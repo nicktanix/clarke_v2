@@ -295,6 +295,28 @@ cmd_plugin_sync() {
 
     local version
     version=$(node -e "console.log(require('$PLUGIN_DST/package.json').version)" 2>/dev/null || echo "?")
+
+    # Update openclaw.json installs entry to match synced version
+    local OC_CONFIG="$HOME/.openclaw/openclaw.json"
+    if [[ -f "$OC_CONFIG" ]]; then
+        info "Updating openclaw.json installs entry to v$version..."
+        python3 -c "
+import json, sys
+f = '$OC_CONFIG'
+c = json.load(open(f))
+inst = c.get('plugins', {}).get('installs', {}).get('openclaw-clarke')
+if inst:
+    inst['version'] = '$version'
+    inst['resolvedVersion'] = '$version'
+    inst['spec'] = 'openclaw-clarke@$version'
+    inst['resolvedSpec'] = 'openclaw-clarke@$version'
+    json.dump(c, open(f, 'w'), indent=2)
+    print('  Updated to v$version')
+else:
+    print('  No installs entry found — skipping', file=sys.stderr)
+"
+    fi
+
     ok "Plugin synced (v$version)"
     echo ""
     echo "Restart OpenClaw to apply: openclaw gateway restart"
