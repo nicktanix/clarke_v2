@@ -1,13 +1,8 @@
 /**
  * CLARKE plugin for OpenClaw.
  *
- * Registers:
- * - Hooks: context injection, query augmentation, learning feedback
- * - Slash commands: /clarke, /clarke-teach, /clarke-recall, /clarke-review, etc.
- * - Skills: bundled SKILL.md files in the skills/ directory
- *
- * The plugin uses definePluginEntry so OpenClaw discovers it properly
- * from the openclaw.plugin.json manifest.
+ * Exports an OpenClawPluginDefinition that registers hooks, tools,
+ * and slash commands through the official plugin API.
  */
 
 import { TTLCache } from "./cache.js";
@@ -37,9 +32,10 @@ export const lastQueryResult = {
 };
 
 /**
- * Plugin entry point using OpenClaw's definePluginEntry pattern.
+ * OpenClaw plugin definition.
+ * Exports an OpenClawPluginDefinition — no special wrapper needed.
  */
-export default {
+const clarkePlugin = {
   id: "clarke",
   name: "CLARKE",
   description:
@@ -48,179 +44,146 @@ export default {
   register(api: any) {
     // ── Hooks ─────────────────────────────────────────────────────
 
-    api.registerHook?.("agent:bootstrap", handleBootstrap);
-    api.registerHook?.("before_prompt_build", handlePromptBuild);
-    api.registerHook?.("before_agent_reply", handleBeforeReply);
-    api.registerHook?.("session_start", handleSessionStart);
-    api.registerHook?.("llm_output", handleLlmOutput);
+    api.registerHook("agent:bootstrap", handleBootstrap);
+    api.registerHook("before_prompt_build", handlePromptBuild);
+    api.registerHook("before_agent_reply", handleBeforeReply);
+    api.registerHook("session_start", handleSessionStart);
+    api.registerHook("llm_output", handleLlmOutput);
 
-    // ── Slash Commands ────────────────────────────────────────────
-    // These run deterministically (no LLM) for fast status checks
-    // and direct API interactions.
+    // ── Tools (agent-callable via tool use) ───────────────────────
 
-    api.registerCommand?.({
-      name: "clarke",
-      description: "CLARKE dashboard — system health, agents, policies",
-      handler: async () => {
+    api.registerTool(() => ({
+      name: "clarke_status",
+      description: "Check CLARKE system health, list agents and policies",
+      inputSchema: { type: "object" as const, properties: {} },
+      async execute() {
         const config = getClarkeConfig();
-        if (!config) return { text: "CLARKE not configured. Set CLARKE_API_URL." };
+        if (!config) return { content: [{ type: "text" as const, text: "CLARKE not configured." }] };
         await ensureRegistered(config);
-
         const health = await fetchHealth(config);
-        if (!health) return { text: "CLARKE is offline. Start with: make dev" };
-
+        if (!health) return { content: [{ type: "text" as const, text: "CLARKE is offline." }] };
         const agents = await listAgents(config);
         const policies = await listPolicies(config);
-
-        const lines = [
-          "CLARKE Command Center",
-          "=====================",
-          "",
-          `System: ${health.status} | v${health.version}`,
-          "",
-          `Agents (${agents.length}):`,
-          ...agents.map(
-            (a: any) => `  ${a.name} (${a.slug}) — ${(a.capabilities || []).join(", ")}`
-          ),
-          ...(agents.length === 0 ? ["  (none — use /clarke-agent to create one)"] : []),
-          "",
-          `Policies (${policies.length}):`,
-          ...policies.map((p: any) => `  ${p.content?.substring(0, 80) || "(empty)"}`),
-          ...(policies.length === 0 ? ["  (none — use /clarke-teach to add one)"] : []),
-          "",
-          "Commands:",
-          "  /clarke          this dashboard",
-          "  /clarke-recall   query CLARKE memory",
-          "  /clarke-teach    record decisions, policies, corrections",
-          "  /clarke-review   approve directive proposals",
-          "  /clarke-status   quick health check",
-        ];
-        return { text: lines.join("\n") };
+        const text = [
+          `CLARKE: ${health.status} | v${health.version}`,
+          `Agents: ${agents.length} | Policies: ${policies.length}`,
+          ...agents.map((a: any) => `  ${a.name} (${a.slug})`),
+        ].join("\n");
+        return { content: [{ type: "text" as const, text }] };
       },
-    });
+    }));
 
-    api.registerCommand?.({
-      name: "clarke_status",
-      description: "Quick CLARKE health check",
-      handler: async () => {
-        const config = getClarkeConfig();
-        if (!config) return { text: "CLARKE not configured." };
-        const greeting = await fetchGreeting(config);
-        return { text: greeting };
-      },
-    });
-
-    api.registerCommand?.({
+    api.registerTool(() => ({
       name: "clarke_recall",
-      description: "Query CLARKE memory",
-      acceptsArgs: true,
-      handler: async (ctx: any) => {
-        const query = ctx.args?.trim();
-        if (!query) return { text: "Usage: /clarke-recall <question>" };
-
-        const config = getClarkeConfig();
-        if (!config) return { text: "CLARKE not configured." };
-        await ensureRegistered(config);
-
-        const result = await queryBroker(config, query);
-        if (!result) return { text: "CLARKE query failed — is the server running?" };
-
-        const lines = [
-          "CLARKE Recall",
-          "=============",
-          "",
-          result.answer,
-          "",
-          `Trace: ${result.requestId}`,
-          result.degradedMode ? "(degraded mode — some sources unavailable)" : "",
-        ].filter(Boolean);
-        return { text: lines.join("\n") };
+      description: "Query CLARKE memory for retrieval-augmented answers",
+      inputSchema: {
+        type: "object" as const,
+        properties: { question: { type: "string", description: "What to ask" } },
+        required: ["question"],
       },
-    });
+      async execute(_id: string, params: any) {
+        const config = getClarkeConfig();
+        if (!config) return { content: [{ type: "text" as const, text: "CLARKE not configured." }] };
+        await ensureRegistered(config);
+        const result = await queryBroker(config, params.question);
+        if (!result) return { content: [{ type: "text" as const, text: "Query failed." }] };
+        return { content: [{ type: "text" as const, text: result.answer }] };
+      },
+    }));
 
-    api.registerCommand?.({
+    api.registerTool(() => ({
       name: "clarke_teach",
-      description: "Submit feedback or correction to CLARKE",
-      acceptsArgs: true,
-      handler: async (ctx: any) => {
-        const note = ctx.args?.trim();
-        if (!note) {
-          return {
-            text: [
-              "Usage: /clarke-teach <what to remember>",
-              "",
-              "Examples:",
-              '  /clarke-teach we decided to use structlog for all logging',
-              '  /clarke-teach correction: always use pytest, not unittest',
-              '  /clarke-teach policy: all endpoints must validate tenant_id',
-            ].join("\n"),
-          };
-        }
-
-        const config = getClarkeConfig();
-        if (!config) return { text: "CLARKE not configured." };
-        await ensureRegistered(config);
-
-        // Route to the broker as a query — CLARKE's episodic memory
-        // will store this as a high-significance interaction
-        const result = await queryBroker(config, `Remember this: ${note}`);
-        if (!result) return { text: "Failed to reach CLARKE." };
-
-        // Submit as positive feedback to reinforce
-        await submitFeedback(config, result.requestId, true, `User teaching: ${note}`);
-
-        return { text: `Recorded. CLARKE will reference this in future interactions.` };
+      description: "Submit knowledge, corrections, or decisions to CLARKE",
+      inputSchema: {
+        type: "object" as const,
+        properties: { content: { type: "string", description: "What to teach" } },
+        required: ["content"],
       },
-    });
-
-    api.registerCommand?.({
-      name: "clarke_review",
-      description: "List pending directive proposals for review",
-      handler: async () => {
+      async execute(_id: string, params: any) {
         const config = getClarkeConfig();
-        if (!config) return { text: "CLARKE not configured." };
+        if (!config) return { content: [{ type: "text" as const, text: "CLARKE not configured." }] };
         await ensureRegistered(config);
+        const result = await queryBroker(config, `Remember this: ${params.content}`);
+        if (!result) return { content: [{ type: "text" as const, text: "Failed." }] };
+        await submitFeedback(config, result.requestId, true, `Teaching: ${params.content}`);
+        return { content: [{ type: "text" as const, text: "Recorded." }] };
+      },
+    }));
 
+    api.registerTool(() => ({
+      name: "clarke_review",
+      description: "List pending CLARKE directive proposals",
+      inputSchema: { type: "object" as const, properties: {} },
+      async execute() {
+        const config = getClarkeConfig();
+        if (!config) return { content: [{ type: "text" as const, text: "CLARKE not configured." }] };
+        await ensureRegistered(config);
         const agents = await listAgents(config);
-        if (agents.length === 0) return { text: "No agents registered." };
-
-        const lines = ["CLARKE Review Queue", "===================", ""];
-
+        const lines: string[] = [];
         let total = 0;
         for (const agent of agents) {
           try {
-            const url = new URL(
-              `${config.endpoint}/agents/profiles/${agent.id}/directives/proposals`
-            );
+            const url = new URL(`${config.endpoint}/agents/profiles/${agent.id}/directives/proposals`);
             url.searchParams.set("status", "pending_approval");
-            const resp = await fetch(url.toString(), {
-              signal: AbortSignal.timeout(5_000),
-            });
+            const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(5_000) });
             if (!resp.ok) continue;
             const proposals = (await resp.json()) as any[];
-            if (proposals.length === 0) continue;
-
-            lines.push(`Agent: ${agent.name} (${agent.slug})`);
             for (const p of proposals) {
               total++;
-              lines.push(`  ${total}. "${p.proposed_directive}"`);
-              lines.push(`     Cluster: ${p.cluster_size} corrections | Similarity: ${p.similarity_score}`);
+              lines.push(`${total}. "${p.proposed_directive}" (${p.cluster_size} corrections)`);
             }
-            lines.push("");
-          } catch {
-            continue;
-          }
+          } catch { continue; }
         }
+        const text = total === 0 ? "No pending proposals." : `${total} pending:\n${lines.join("\n")}`;
+        return { content: [{ type: "text" as const, text }] };
+      },
+    }));
 
-        if (total === 0) {
-          lines.push("No pending proposals. System is up to date.");
-        } else {
-          lines.push(`${total} proposal(s) need review.`);
-          lines.push("Use the clarke_approve_directive or clarke_reject_directive MCP tools to act.");
-        }
+    // ── Slash Commands (deterministic, no LLM) ────────────────────
 
-        return { text: lines.join("\n") };
+    api.registerCommand({
+      name: "clarke",
+      description: "CLARKE dashboard",
+      async handler() {
+        const config = getClarkeConfig();
+        if (!config) return { text: "CLARKE not configured. Set CLARKE_API_URL." };
+        await ensureRegistered(config);
+        return { text: await fetchGreeting(config) };
+      },
+    });
+
+    api.registerCommand({
+      name: "clarke_recall",
+      description: "Query CLARKE memory",
+      acceptsArgs: true,
+      async handler(ctx: any) {
+        const q = ctx.args?.trim();
+        if (!q) return { text: "Usage: /clarke_recall <question>" };
+        const config = getClarkeConfig();
+        if (!config) return { text: "CLARKE not configured." };
+        await ensureRegistered(config);
+        const result = await queryBroker(config, q);
+        return { text: result?.answer || "Query failed." };
+      },
+    });
+
+    api.registerCommand({
+      name: "clarke_teach",
+      description: "Teach CLARKE something",
+      acceptsArgs: true,
+      async handler(ctx: any) {
+        const note = ctx.args?.trim();
+        if (!note) return { text: "Usage: /clarke_teach <what to remember>" };
+        const config = getClarkeConfig();
+        if (!config) return { text: "CLARKE not configured." };
+        await ensureRegistered(config);
+        const result = await queryBroker(config, `Remember this: ${note}`);
+        if (!result) return { text: "Failed." };
+        await submitFeedback(config, result.requestId, true, `Teaching: ${note}`);
+        return { text: "Recorded." };
       },
     });
   },
 };
+
+export default clarkePlugin;
