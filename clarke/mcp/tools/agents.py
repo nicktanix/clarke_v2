@@ -29,7 +29,7 @@ async def handle_create_agent(args: dict) -> str:
             payload[optional] = args[optional]
 
     result = await clarke_api("POST", "/agents/profiles", json=payload)
-    return json.dumps(result) if isinstance(result, dict) else result
+    return json.dumps(result) if isinstance(result, (dict, list)) else result
 
 
 register(
@@ -102,7 +102,7 @@ async def handle_list_agents(args: dict) -> str:
         "status": args.get("status", "active"),
     }
     result = await clarke_api("GET", "/agents/profiles", params=params)
-    return json.dumps(result) if isinstance(result, dict) else result
+    return json.dumps(result) if isinstance(result, (dict, list)) else result
 
 
 register(
@@ -146,7 +146,7 @@ async def handle_update_agent(args: dict) -> str:
             payload[field] = args[field]
 
     result = await clarke_api("PUT", f"/agents/profiles/{profile_id}", json=payload)
-    return json.dumps(result) if isinstance(result, dict) else result
+    return json.dumps(result) if isinstance(result, (dict, list)) else result
 
 
 register(

@@ -20,7 +20,7 @@ async def handle_feedback(args: dict) -> str:
         payload["notes"] = args["notes"]
 
     result = await clarke_api("POST", "/feedback", json=payload)
-    return json.dumps(result) if isinstance(result, dict) else result
+    return json.dumps(result) if isinstance(result, (dict, list)) else result
 
 
 register(

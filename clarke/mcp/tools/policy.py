@@ -16,7 +16,7 @@ async def handle_create_policy(args: dict) -> str:
         "owner_id": args["owner_id"],
     }
     result = await clarke_api("POST", "/policy", json=payload)
-    return json.dumps(result) if isinstance(result, dict) else result
+    return json.dumps(result) if isinstance(result, (dict, list)) else result
 
 
 register(
@@ -53,7 +53,7 @@ async def handle_list_policies(args: dict) -> str:
     """List policies for a tenant."""
     params: dict = {"tenant_id": args["tenant_id"]}
     result = await clarke_api("GET", "/policy", params=params)
-    return json.dumps(result) if isinstance(result, dict) else result
+    return json.dumps(result) if isinstance(result, (dict, list)) else result
 
 
 register(

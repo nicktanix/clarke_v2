@@ -9,7 +9,7 @@ from clarke.mcp.tools._base import clarke_api
 async def handle_health(args: dict) -> str:
     """Check CLARKE API health status."""
     result = await clarke_api("GET", "/health")
-    return json.dumps(result) if isinstance(result, dict) else result
+    return json.dumps(result) if isinstance(result, (dict, list)) else result
 
 
 register(

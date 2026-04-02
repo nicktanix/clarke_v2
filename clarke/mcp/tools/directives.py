@@ -20,7 +20,7 @@ async def handle_list_directives(args: dict) -> str:
         f"/agents/profiles/{profile_id}/directives/proposals",
         params=params,
     )
-    return json.dumps(result) if isinstance(result, dict) else result
+    return json.dumps(result) if isinstance(result, (dict, list)) else result
 
 
 register(
@@ -65,7 +65,7 @@ async def handle_approve_directive(args: dict) -> str:
         f"/agents/profiles/{profile_id}/directives/proposals/{proposal_id}/approve",
         json=payload,
     )
-    return json.dumps(result) if isinstance(result, dict) else result
+    return json.dumps(result) if isinstance(result, (dict, list)) else result
 
 
 register(
@@ -118,7 +118,7 @@ async def handle_reject_directive(args: dict) -> str:
         f"/agents/profiles/{profile_id}/directives/proposals/{proposal_id}/reject",
         json=payload,
     )
-    return json.dumps(result) if isinstance(result, dict) else result
+    return json.dumps(result) if isinstance(result, (dict, list)) else result
 
 
 register(

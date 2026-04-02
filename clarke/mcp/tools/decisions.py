@@ -19,7 +19,7 @@ async def handle_create_decision(args: dict) -> str:
         payload["alternatives"] = args["alternatives"]
 
     result = await clarke_api("POST", "/decisions", json=payload)
-    return json.dumps(result) if isinstance(result, dict) else result
+    return json.dumps(result) if isinstance(result, (dict, list)) else result
 
 
 register(

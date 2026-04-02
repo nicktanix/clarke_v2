@@ -20,7 +20,7 @@ async def handle_session_context(args: dict) -> str:
         payload["session_id"] = args["session_id"]
 
     result = await clarke_api("POST", "/agents/session-context", json=payload)
-    return json.dumps(result) if isinstance(result, dict) else result
+    return json.dumps(result) if isinstance(result, (dict, list)) else result
 
 
 register(
