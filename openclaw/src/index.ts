@@ -36,12 +36,6 @@ export const lastQueryResult = {
   query: "",
 };
 
-/** Buffers the current turn's messages for afterTurn storage. */
-const turnBuffer: { user: string; assistant: string } = {
-  user: "",
-  assistant: "",
-};
-
 /** Memory types that warrant refreshing the context cache. */
 const CONTEXT_REFRESH_TYPES = new Set([
   "decision",
@@ -144,31 +138,9 @@ const clarkePlugin = {
         ownsCompaction: false, // Let OpenClaw handle compaction
       },
 
-      async ingest(params: any) {
-        const content = params.message?.content || params.message?.text || "";
-        const role = params.message?.role || "unknown";
-
-        // Buffer messages for afterTurn processing
-        if (role === "user" && content) {
-          turnBuffer.user = content;
-          turnBuffer.assistant = "";
-        } else if (role === "assistant" && content) {
-          turnBuffer.assistant = content;
-
-          // Submit implicit positive feedback if we queried CLARKE
-          const config = getClarkeConfig();
-          if (config?.tenantId && lastQueryResult.requestId) {
-            submitFeedback(
-              config,
-              lastQueryResult.requestId,
-              true,
-              "Implicit positive — agent responded without correction."
-            ).catch(() => {});
-            lastQueryResult.requestId = "";
-            lastQueryResult.query = "";
-          }
-        }
-
+      // ingest() is not called when afterTurn() exists (OpenClaw if/else).
+      // Kept as a no-op fallback in case future SDK versions change behavior.
+      async ingest(_params: any) {
         return { ingested: true };
       },
 
@@ -235,23 +207,37 @@ const clarkePlugin = {
         };
       },
 
-      async afterTurn() {
-        // Assess the turn for memory-worthy content and store automatically
+      async afterTurn(params: any) {
+        // Assess the turn for memory-worthy content and store automatically.
+        // OpenClaw passes the full messages snapshot in params — ingest()
+        // is never called when afterTurn exists (if/else in the SDK).
         const config = getClarkeConfig();
         if (!config?.tenantId) return;
-        if (!turnBuffer.user || !turnBuffer.assistant) return;
 
-        const userMsg = turnBuffer.user;
-        const assistantMsg = turnBuffer.assistant;
+        const messages = params?.messages || [];
+        const lastUser = [...messages].reverse().find((m: any) => m.role === "user");
+        const lastAssistant = [...messages].reverse().find((m: any) => m.role === "assistant");
 
-        // Reset buffer before async work
-        turnBuffer.user = "";
-        turnBuffer.assistant = "";
+        if (!lastUser?.content || !lastAssistant?.content) return;
+
+        // Submit implicit positive feedback if we queried CLARKE this turn
+        if (lastQueryResult.requestId) {
+          submitFeedback(
+            config,
+            lastQueryResult.requestId,
+            true,
+            "Implicit positive — agent responded without correction."
+          ).catch(() => {});
+          lastQueryResult.requestId = "";
+          lastQueryResult.query = "";
+        }
 
         // Send to CLARKE for significance classification + auto-storage
-        const result = await assessTurn(config, userMsg, assistantMsg).catch(
-          () => null
-        );
+        const result = await assessTurn(
+          config,
+          lastUser.content,
+          lastAssistant.content
+        ).catch(() => null);
 
         // If something memory-worthy was stored, refresh context cache
         // so the next LLM call sees the updated memory
