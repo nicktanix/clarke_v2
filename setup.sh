@@ -304,38 +304,60 @@ ok "Dynamic context and self-improvement enabled"
 
 step "Starting backend services"
 
-# Check if already running
-if curl -sf "$ENDPOINT/health" &>/dev/null; then
-    ok "CLARKE backend already running at $ENDPOINT"
-else
-    info "Starting Docker services..."
-    $COMPOSE up -d
-
-    info "Waiting for services..."
-    for i in $(seq 1 30); do
-        if $COMPOSE ps --format "{{.Status}}" 2>/dev/null | grep -q "healthy"; then
-            break
-        fi
-        sleep 2
-        echo -n "."
-    done
-    echo ""
-    ok "Docker services ready"
-
-    # Run migrations
-    info "Running database migrations..."
-    MIGRATE_OUTPUT=$(.venv/bin/python -m alembic upgrade head 2>&1)
-    MIGRATE_RC=$?
-    echo "$MIGRATE_OUTPUT" | grep -E "^INFO|Running"
-    if [[ $MIGRATE_RC -ne 0 ]]; then
-        err "Migration failed:"
-        echo "$MIGRATE_OUTPUT" | tail -5
-        err "Check the database and retry. You may need: cd $INSTALL_DIR && .venv/bin/python -m alembic upgrade head"
-        exit 1
+# Kill any stale CLARKE API server from a previous install
+if [[ -f "$INSTALL_DIR/.clarke.pid" ]]; then
+    OLD_PID=$(cat "$INSTALL_DIR/.clarke.pid")
+    if kill -0 "$OLD_PID" 2>/dev/null; then
+        info "Stopping stale CLARKE API server (PID $OLD_PID)..."
+        kill "$OLD_PID" 2>/dev/null || true
+        sleep 1
     fi
-    ok "Migrations complete"
+    rm -f "$INSTALL_DIR/.clarke.pid"
+fi
+# Also kill anything listening on the port (covers manual starts)
+if command -v fuser &>/dev/null; then
+    fuser -k "$PORT/tcp" 2>/dev/null || true
+elif command -v lsof &>/dev/null; then
+    PID_ON_PORT=$(lsof -ti ":$PORT" 2>/dev/null || true)
+    if [[ -n "$PID_ON_PORT" ]]; then
+        info "Stopping process on port $PORT (PID $PID_ON_PORT)..."
+        kill "$PID_ON_PORT" 2>/dev/null || true
+        sleep 1
+    fi
+fi
 
-    # Start API server
+# Ensure Docker services are running (always — even if API was already up)
+info "Starting Docker services..."
+$COMPOSE up -d
+
+info "Waiting for services..."
+for i in $(seq 1 30); do
+    if $COMPOSE ps --format "{{.Status}}" 2>/dev/null | grep -q "healthy"; then
+        break
+    fi
+    sleep 2
+    echo -n "."
+done
+echo ""
+ok "Docker services ready"
+
+# Run migrations (always — idempotent, catches new tables)
+info "Running database migrations..."
+MIGRATE_OUTPUT=$(.venv/bin/python -m alembic upgrade head 2>&1)
+MIGRATE_RC=$?
+echo "$MIGRATE_OUTPUT" | grep -E "^INFO|Running"
+if [[ $MIGRATE_RC -ne 0 ]]; then
+    err "Migration failed:"
+    echo "$MIGRATE_OUTPUT" | tail -5
+    err "Check the database and retry. You may need: cd $INSTALL_DIR && .venv/bin/python -m alembic upgrade head"
+    exit 1
+fi
+ok "Migrations complete"
+
+# Start API server
+if curl -sf "$ENDPOINT/health" &>/dev/null; then
+    ok "CLARKE API already running at $ENDPOINT"
+else
     info "Starting CLARKE API server on port $PORT..."
     nohup .venv/bin/python -m uvicorn clarke.api.app:create_app \
         --factory --host 0.0.0.0 --port "$PORT" \
