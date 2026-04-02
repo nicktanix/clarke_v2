@@ -95,8 +95,13 @@ class SessionContextBuilder:
         # 10. Budget-cap decisions
         decisions = self._budget_cap_items(decisions, section_budget["decisions"])
 
-        # 11. Budget-cap policies
-        policies = self._budget_cap_strings(policies, section_budget["policies"])
+        # 11. Budget-cap policies — extract content strings from policy dicts
+        policy_strings = [
+            p["content"] if isinstance(p, dict) else str(p)
+            for p in policies
+            if (isinstance(p, dict) and p.get("content")) or (isinstance(p, str) and p)
+        ]
+        policies = self._budget_cap_strings(policy_strings, section_budget["policies"])
 
         # 12. Budget-cap recent state
         recent_state = self._budget_cap_items(recent_state, section_budget["recent_state"])
