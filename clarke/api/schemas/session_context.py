@@ -28,6 +28,14 @@ class SessionConstraints(BaseModel):
     tool_access: list[str] = []
 
 
+class AvailableCapability(BaseModel):
+    """A capability available for sub-agent spawning."""
+
+    name: str
+    skill_count: int = 0
+    skill_names: list[str] = []
+
+
 class SessionContextPack(BaseModel):
     identity: AgentIdentity
     directives: list[str] = []
@@ -37,6 +45,7 @@ class SessionContextPack(BaseModel):
     evidence: list[dict] = []
     decisions: list[dict] = []
     recent_state: list[dict] = []
+    available_capabilities: list[AvailableCapability] = []
     constraints: SessionConstraints
     budget: ContextBudget = ContextBudget()
     session_context_id: str

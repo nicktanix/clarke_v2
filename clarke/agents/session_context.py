@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from clarke.api.schemas.retrieval import ContextBudget
 from clarke.api.schemas.session_context import (
     AgentIdentity,
+    AvailableCapability,
     BuildSessionContextRequest,
     SessionConstraints,
     SessionContextPack,
@@ -106,6 +107,11 @@ class SessionContextBuilder:
         # 12. Budget-cap recent state
         recent_state = self._budget_cap_items(recent_state, section_budget["recent_state"])
 
+        # 12b. Fetch available capabilities catalog (for sub-agent spawning)
+        available_capabilities = await self._fetch_available_capabilities(
+            request.tenant_id, request.project_id, qdrant_available
+        )
+
         # 13. Build constraints
         constraints = SessionConstraints(
             budget_tokens=budget_tokens,
@@ -136,6 +142,7 @@ class SessionContextBuilder:
             evidence=evidence,
             decisions=decisions,
             recent_state=recent_state,
+            available_capabilities=available_capabilities,
             constraints=constraints,
             budget=ContextBudget(input_tokens=total_tokens, actual_tokenizer="estimated"),
             session_context_id=session_context_id,
@@ -455,6 +462,71 @@ class SessionContextBuilder:
             logger.warning("session_context_history_fetch_failed", exc_info=True)
         return []
 
+    async def _fetch_available_capabilities(
+        self,
+        tenant_id: str,
+        project_id: str,
+        qdrant_available: bool,
+    ) -> list[AvailableCapability]:
+        """Fetch all distinct capabilities from ingested skills.
+
+        Returns a catalog of capabilities that can be requested when
+        spawning sub-agents. Each capability lists the skills that provide it.
+        """
+        if not qdrant_available:
+            return []
+
+        try:
+            from qdrant_client.models import FieldCondition, Filter, MatchValue
+
+            from clarke.retrieval.qdrant.client import get_qdrant_store
+
+            store = get_qdrant_store()
+
+            # Scroll all skill points to collect capabilities
+            # (Qdrant doesn't have a native distinct/facet query)
+            cap_map: dict[str, set[str]] = {}
+            offset = None
+            while True:
+                results, next_offset = await store.client.scroll(
+                    collection_name=store.collection_name,
+                    scroll_filter=Filter(
+                        must=[
+                            FieldCondition(key="tenant_id", match=MatchValue(value=tenant_id)),
+                            FieldCondition(key="project_id", match=MatchValue(value=project_id)),
+                            FieldCondition(key="source_type", match=MatchValue(value="skill")),
+                        ]
+                    ),
+                    limit=100,
+                    offset=offset,
+                    with_payload=["agent_capabilities", "skill_name"],
+                )
+
+                for point in results:
+                    payload = point.payload or {}
+                    skill_name = payload.get("skill_name", "unknown")
+                    for cap in payload.get("agent_capabilities", []):
+                        cap_map.setdefault(cap, set()).add(skill_name)
+
+                if next_offset is None:
+                    break
+                offset = next_offset
+
+            return sorted(
+                [
+                    AvailableCapability(
+                        name=cap,
+                        skill_count=len(skills),
+                        skill_names=sorted(skills),
+                    )
+                    for cap, skills in cap_map.items()
+                ],
+                key=lambda c: (-c.skill_count, c.name),
+            )
+        except Exception:
+            logger.warning("available_capabilities_fetch_failed", exc_info=True)
+        return []
+
     async def _rank_and_cap_skills(
         self,
         skills: list[SkillEntry],
@@ -648,6 +720,24 @@ def render_session_context_markdown(pack: SessionContextPack) -> str:
             sections.append(f"#### {skill.skill_name}")
             sections.append(skill.content)
             sections.append("")
+
+    # Available Capabilities — catalog for sub-agent spawning
+    if pack.available_capabilities:
+        sections.append("## Available Capabilities for Sub-Agents")
+        sections.append(
+            "*When spawning a sub-agent via SUBAGENT_SPAWN, request these capabilities "
+            "to have CLARKE inject the appropriate skill instructions into the sub-agent's context. "
+            "You can request multiple capabilities per spawn.*"
+        )
+        sections.append("")
+        sections.append("| Capability | Skills | Count |")
+        sections.append("|------------|--------|-------|")
+        for cap in pack.available_capabilities:
+            skill_list = ", ".join(cap.skill_names[:5])
+            if len(cap.skill_names) > 5:
+                skill_list += f" (+{len(cap.skill_names) - 5} more)"
+            sections.append(f"| `{cap.name}` | {skill_list} | {cap.skill_count} |")
+        sections.append("")
 
     # Domain Knowledge — medium trust, ingested documents
     if pack.evidence:
