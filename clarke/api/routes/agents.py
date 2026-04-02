@@ -220,6 +220,74 @@ async def ingest_skill(
     }
 
 
+@router.post("/spawn-context")
+async def spawn_with_context(
+    request: dict,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Analyze a task, pick capabilities, and return skill-matched context for a sub-agent.
+
+    Called by the OpenClaw plugin's prepareSubagentSpawn() hook.
+    Does NOT create an AgentInstance — just returns the context pack.
+    """
+    from clarke.agents.session_context import SessionContextBuilder
+    from clarke.api.schemas.session_context import BuildSessionContextRequest
+
+    tenant_id = request.get("tenant_id", "")
+    project_id = request.get("project_id", "")
+    task = request.get("task", "")
+    capabilities = request.get("capabilities", [])
+
+    if not tenant_id or not project_id:
+        raise HTTPException(status_code=400, detail="tenant_id and project_id required")
+
+    # If no capabilities specified, infer from task via keyword matching
+    if not capabilities and task:
+        capabilities = _infer_capabilities(task)
+
+    builder = SessionContextBuilder()
+    try:
+        ctx_request = BuildSessionContextRequest(
+            tenant_id=tenant_id,
+            project_id=project_id,
+            task_context=task,
+            capabilities_override=capabilities,
+        )
+        context = await builder.build_for_capabilities(ctx_request, capabilities, session)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    return {
+        "capabilities": capabilities,
+        "skills": context.get("skills", []),
+        "policies": context.get("policies", []),
+        "task": task,
+    }
+
+
+def _infer_capabilities(task: str) -> list[str]:
+    """Simple keyword-based capability inference from task description."""
+    task_lower = task.lower()
+    caps: list[str] = []
+
+    keyword_map = {
+        "debugging": ["debug", "fix", "error", "bug", "trace", "crash", "exception"],
+        "testing": ["test", "tdd", "coverage", "assert", "spec"],
+        "code_review": ["review", "audit", "inspect"],
+        "planning": ["plan", "design", "architect", "brainstorm"],
+        "implementation": ["implement", "build", "create", "add feature", "develop"],
+        "git": ["branch", "merge", "commit", "rebase", "worktree"],
+        "orchestration": ["parallel", "concurrent", "dispatch", "coordinate"],
+        "quality": ["verify", "validate", "check", "ensure"],
+    }
+
+    for cap, keywords in keyword_map.items():
+        if any(kw in task_lower for kw in keywords):
+            caps.append(cap)
+
+    return caps or ["general"]
+
+
 # --- Agent Instance endpoints (Phase 6) ---
 # These use /{agent_id} catch-all and MUST come after specific-path routes.
 

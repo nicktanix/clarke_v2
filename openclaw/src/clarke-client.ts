@@ -290,6 +290,88 @@ export async function assessTurn(
 }
 
 /**
+ * Context pack returned by spawn-context endpoint.
+ */
+export interface SpawnContext {
+  capabilities: string[];
+  skills: Array<{
+    skill_name: string;
+    content: string;
+    trigger_conditions: string[];
+    priority: number;
+  }>;
+  policies: string[];
+  task: string;
+}
+
+/**
+ * Request CLARKE to analyze a task and return capability-matched context
+ * for a sub-agent spawn. CLARKE infers capabilities from the task
+ * description and returns matching skill instructions + policies.
+ */
+export async function fetchSpawnContext(
+  config: ClarkeConfig,
+  task: string,
+  capabilities?: string[]
+): Promise<SpawnContext | null> {
+  try {
+    const resp = await fetch(`${config.endpoint}/agents/spawn-context`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenant_id: config.tenantId,
+        project_id: config.projectId,
+        task,
+        capabilities: capabilities || [],
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) return null;
+    return (await resp.json()) as SpawnContext;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Render a SpawnContext into a markdown system prompt addition
+ * for injection into a child agent's context.
+ */
+export function renderSpawnContextMarkdown(ctx: SpawnContext): string {
+  const parts: string[] = [
+    "## CLARKE Sub-Agent Context",
+    "",
+    `**Task:** ${ctx.task}`,
+    `**Capabilities:** ${ctx.capabilities.join(", ")}`,
+    "",
+  ];
+
+  if (ctx.policies.length > 0) {
+    parts.push("### Policies (trust: highest)");
+    parts.push("*Follow these unconditionally.*");
+    for (const p of ctx.policies) {
+      parts.push(`- ${p}`);
+    }
+    parts.push("");
+  }
+
+  if (ctx.skills.length > 0) {
+    parts.push("### Skills");
+    parts.push(
+      "*Follow these methodologies when they match your task.*"
+    );
+    parts.push("");
+    for (const skill of ctx.skills) {
+      parts.push(`#### ${skill.skill_name}`);
+      parts.push(skill.content);
+      parts.push("");
+    }
+  }
+
+  return parts.join("\n");
+}
+
+/**
  * Build a concise greeting string.
  */
 export async function fetchGreeting(config: ClarkeConfig): Promise<string> {
