@@ -724,30 +724,63 @@ def render_session_context_markdown(pack: SessionContextPack) -> str:
     # Available Capabilities — catalog for sub-agent spawning
     if pack.available_capabilities:
         sections.append("## Sub-Agent Spawning")
-        sections.append(
-            "*You can delegate tasks to specialized sub-agents. When you spawn a sub-agent, "
-            "CLARKE automatically analyzes the task description and injects the appropriate "
-            "skill instructions into the sub-agent's context. Write clear, descriptive task "
-            "descriptions so CLARKE can match the best skills.*"
-        )
         sections.append("")
         sections.append(
-            "**How it works:** Describe the task when spawning → CLARKE infers capabilities "
-            "from the description → matching skill methodologies are injected into the "
-            "sub-agent's system prompt automatically. You don't need to specify capabilities "
-            "explicitly, but you can include keywords from the table below to ensure "
-            "specific skills are included."
+            "You can delegate complex or specialized tasks to sub-agents. "
+            "When you do, CLARKE automatically injects relevant skill instructions "
+            "into the sub-agent based on the task description."
         )
+        sections.append("")
+        sections.append("### How to Spawn")
+        sections.append("")
+        sections.append(
+            "Use `sessions_spawn` with `runtime: \"subagent\"` and a clear task description:"
+        )
+        sections.append("")
+        sections.append("```")
+        sections.append('sessions_spawn({')
+        sections.append('  runtime: "subagent",')
+        sections.append('  task: "Review the authentication middleware for security vulnerabilities and OWASP Top 10 issues",')
+        sections.append('})')
+        sections.append("```")
+        sections.append("")
+        sections.append("**Key points:**")
+        sections.append("- Always use `runtime: \"subagent\"` for CLARKE-managed sub-agents")
+        sections.append("- Write a detailed task description — CLARKE matches skills by keywords")
+        sections.append("- Include keywords like `debug`, `test`, `review`, `plan` to target specific skills")
+        sections.append("- Sub-agents automatically receive policies and matched skill methodologies")
+        sections.append("- Spawn sub-agents for tasks that benefit from focused, specialized work")
+        sections.append("")
+        sections.append("### When to Spawn vs. Do It Yourself")
+        sections.append("")
+        sections.append("- **Spawn** for: code review, debugging, test writing, implementation of isolated features")
+        sections.append("- **Do yourself** for: quick questions, simple edits, conversational tasks")
         sections.append("")
         sections.append("### Available Capabilities")
         sections.append("")
-        sections.append("| Capability | Skills | Count |")
-        sections.append("|------------|--------|-------|")
+        sections.append(
+            "CLARKE infers these from your task description. "
+            "Include the keyword to ensure the matching skills are injected."
+        )
+        sections.append("")
+        sections.append("| Capability | Keywords | Skills |")
+        sections.append("|------------|----------|--------|")
+        keyword_hints = {
+            "debugging": "debug, fix, error, bug, trace",
+            "testing": "test, tdd, coverage, spec",
+            "code_review": "review, audit, inspect",
+            "planning": "plan, design, architect, brainstorm",
+            "implementation": "implement, build, create, develop",
+            "git": "branch, merge, commit, rebase",
+            "orchestration": "parallel, concurrent, dispatch",
+            "quality": "verify, validate, check, ensure",
+        }
         for cap in pack.available_capabilities:
-            skill_list = ", ".join(cap.skill_names[:5])
-            if len(cap.skill_names) > 5:
-                skill_list += f" (+{len(cap.skill_names) - 5} more)"
-            sections.append(f"| `{cap.name}` | {skill_list} | {cap.skill_count} |")
+            skill_list = ", ".join(cap.skill_names[:3])
+            if len(cap.skill_names) > 3:
+                skill_list += f" +{len(cap.skill_names) - 3}"
+            hints = keyword_hints.get(cap.name, "—")
+            sections.append(f"| `{cap.name}` | {hints} | {skill_list} |")
         sections.append("")
 
     # Domain Knowledge — medium trust, ingested documents
