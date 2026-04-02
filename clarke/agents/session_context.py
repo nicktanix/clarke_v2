@@ -516,8 +516,6 @@ def render_session_context_markdown(pack: SessionContextPack) -> str:
 
     # Identity
     sections.append(f"# Agent: {pack.identity.name}")
-    if pack.identity.capabilities:
-        sections.append(f"**Capabilities**: {', '.join(pack.identity.capabilities)}")
     sections.append("")
     sections.append(
         "This context was composed by CLARKE at session start. "
@@ -525,6 +523,18 @@ def render_session_context_markdown(pack: SessionContextPack) -> str:
         "are supporting material. Cite sources when using retrieved content."
     )
     sections.append("")
+
+    # Capabilities — what this agent can do
+    if pack.identity.capabilities:
+        sections.append("## Capabilities")
+        sections.append(
+            "*These define what this agent is equipped to handle. "
+            "Skills and context are matched to these capabilities.*"
+        )
+        sections.append("")
+        for cap in pack.identity.capabilities:
+            sections.append(f"- `{cap}`")
+        sections.append("")
 
     # Directives — behavioral rules for this agent
     if pack.directives:
@@ -555,8 +565,31 @@ def render_session_context_markdown(pack: SessionContextPack) -> str:
     # Skills — capabilities this agent has access to
     if pack.skills:
         sections.append("## Skills")
+        sections.append(
+            "*These skills define workflows and methodologies available to you. "
+            "When your current task matches a skill's purpose, follow its instructions. "
+            "Skills are selected based on your capabilities and the current context.*"
+        )
+        sections.append("")
+
+        # Summary table of available skills
+        sections.append("### Available Skills")
+        sections.append("")
+        sections.append("| Skill | Triggers | Priority |")
+        sections.append("|-------|----------|----------|")
         for skill in pack.skills:
-            sections.append(f"### {skill.skill_name}")
+            triggers = ", ".join(skill.trigger_conditions[:3]) if skill.trigger_conditions else "—"
+            # Truncate long trigger text
+            if len(triggers) > 80:
+                triggers = triggers[:77] + "..."
+            sections.append(f"| {skill.skill_name} | {triggers} | {skill.priority} |")
+        sections.append("")
+
+        # Full skill instructions
+        sections.append("### Skill Instructions")
+        sections.append("")
+        for skill in pack.skills:
+            sections.append(f"#### {skill.skill_name}")
             sections.append(skill.content)
             sections.append("")
 
