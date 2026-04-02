@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "CLARKE — Cognitive Learning Augmentation Retrieval Knowledge Engine. Brokered memory and context management for OpenClaw agents.",
   "homepage": "https://github.com/clarke-ai/clarke",
-  "license": "MIT",
+  "license": "Polyform-Noncommercial-1.0.0",
   "configSchema": {
     "endpoint": {
       "type": "string",

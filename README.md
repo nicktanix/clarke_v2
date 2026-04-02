@@ -276,4 +276,6 @@ For detailed architecture documentation, design principles, tech stack decisions
 
 ## License
 
-MIT
+Polyform Noncommercial 1.0.0 — free for personal, research, and noncommercial use.
+
+For commercial and enterprise licensing, contact [nick@neill.cloud](mailto:nick@neill.cloud).

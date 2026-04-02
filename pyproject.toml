@@ -6,6 +6,8 @@ build-backend = "hatchling.build"
 name = "clarke"
 version = "0.1.0"
 description = "Cognitive Learning Augmentation Retrieval Knowledge Engine"
+license = "LicenseRef-Polyform-Noncommercial-1.0.0"
+authors = [{name = "Nick Neill", email = "nick@neill.cloud"}]
 requires-python = ">=3.12"
 dependencies = [
     # API
