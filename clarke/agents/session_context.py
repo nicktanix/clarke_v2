@@ -195,10 +195,11 @@ class SessionContextBuilder:
         try:
             from clarke.broker.degraded_mode import check_dependency_health
 
-            health = await check_dependency_health()
-            mode = health.get("execution_mode", "full")
-            qdrant_ok = mode == "full" or mode == "reduced"
-            return mode != "full", qdrant_ok
+            mode, _health_details = await check_dependency_health()
+            # mode is a DegradedMode enum: FULL, REDUCED, CANONICAL_ONLY
+            mode_str = mode.value if hasattr(mode, "value") else str(mode)
+            qdrant_ok = mode_str in ("full", "reduced")
+            return mode_str != "full", qdrant_ok
         except Exception:
             logger.warning("health_check_failed_in_session_builder", exc_info=True)
             return True, False
