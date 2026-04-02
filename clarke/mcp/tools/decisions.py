@@ -64,6 +64,8 @@ register(
                 "limit": {
                     "type": "integer",
                     "description": "Maximum number of results to return (default: 20)",
+                    "minimum": 1,
+                    "maximum": 100,
                 },
                 "offset": {
                     "type": "integer",

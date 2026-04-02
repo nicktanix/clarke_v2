@@ -24,3 +24,11 @@ class DecisionListItem(BaseModel):
     rationale: str
     status: str
     decided_at: str
+
+
+class DecisionListResponse(BaseModel):
+    items: list[DecisionListItem]
+    total: int
+    limit: int
+    offset: int
+    has_more: bool
