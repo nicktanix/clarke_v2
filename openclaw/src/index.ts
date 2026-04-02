@@ -72,9 +72,19 @@ const clarkePlugin = {
       if (!cached) return [];
 
       return [
-        "## CLARKE Memory Context",
-        "The following context is from CLARKE's brokered memory system.",
-        "Policies and decisions are authoritative. Cite sources when referencing.",
+        "## CLARKE Memory System (ACTIVE)",
+        "",
+        "IMPORTANT: This agent uses CLARKE as its memory and persistence system.",
+        "DO NOT edit workspace markdown files (USER.md, SOUL.md, AGENTS.md, MEMORY.md)",
+        "to store information unless the user explicitly asks you to edit a file.",
+        "Instead, use the CLARKE tools to persist memories, decisions, and preferences:",
+        "- clarke_teach: Store knowledge, preferences, corrections, decisions",
+        "- clarke_recall: Retrieve information from CLARKE memory",
+        "- clarke_review: Review pending directive proposals",
+        "- clarke_create_decision: Record architectural/process decisions",
+        "- clarke_create_policy: Record organizational rules",
+        "",
+        "The following context was retrieved from CLARKE's brokered memory:",
         "",
         cached,
       ];
@@ -200,7 +210,12 @@ const clarkePlugin = {
         }
 
         // Build the system prompt addition
-        const parts: string[] = [];
+        const parts: string[] = [
+          "## CLARKE Memory System",
+          "You have CLARKE tools for persisting information. DO NOT edit markdown files to store data.",
+          "Use clarke_teach, clarke_create_decision, or clarke_create_policy instead.",
+          "",
+        ];
         if (sessionContext) {
           parts.push(sessionContext);
         }
