@@ -252,12 +252,17 @@ def _register_plugin(config: dict, config_path: Path) -> None:
 
     plugins["enabled"] = True
 
-    # Add CLARKE plugin path to load paths (deduplicated)
+    # Add CLARKE plugin parent to load paths.
+    # OpenClaw scans load paths for subdirectories containing openclaw.plugin.json.
+    # So we add the parent of the plugin dir (e.g., ~/.clarke) and OpenClaw finds
+    # ~/.clarke/openclaw/openclaw.plugin.json.
     load = plugins.setdefault("load", {})
     paths = load.setdefault("paths", [])
-    plugin_path = str(PLUGIN_DIR)
-    if plugin_path not in paths:
-        paths.append(plugin_path)
+    plugin_parent = str(PLUGIN_DIR.parent)
+    # Clean up stale entries pointing to the plugin dir itself
+    paths[:] = [p for p in paths if p != str(PLUGIN_DIR)]
+    if plugin_parent not in paths:
+        paths.append(plugin_parent)
 
     # Add plugin entry config
     entries = plugins.setdefault("entries", {})
