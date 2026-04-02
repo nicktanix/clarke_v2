@@ -381,6 +381,24 @@ else
     fi
 fi
 
+# ── Install clarke command ──────────────────────────────────────────
+
+step "Installing clarke command"
+
+# Symlink the service script to a bin directory on PATH
+CLARKE_BIN="$HOME/.local/bin/clarke"
+mkdir -p "$(dirname "$CLARKE_BIN")"
+ln -sf "$INSTALL_DIR/scripts/clarke-service.sh" "$CLARKE_BIN"
+chmod +x "$INSTALL_DIR/scripts/clarke-service.sh"
+ok "Installed: clarke (at $CLARKE_BIN)"
+
+# Install systemd service if systemctl is available
+if command -v systemctl &>/dev/null; then
+    info "Installing systemd user service..."
+    bash "$INSTALL_DIR/scripts/clarke-service.sh" install-systemd 2>&1 | sed 's/^/  /'
+    ok "systemd service installed"
+fi
+
 # ── OpenClaw Integration ────────────────────────────────────────────
 
 step "Installing into OpenClaw"
@@ -417,15 +435,18 @@ echo "  /clarke-recall   — query CLARKE's memory"
 echo "  /clarke-review   — approve self-improvement proposals"
 echo ""
 echo -e "${BOLD}Manage CLARKE:${NC}"
-echo "  cd $INSTALL_DIR"
-echo "  source .venv/bin/activate"
-echo "  make dev         — restart services"
-echo "  make test        — run tests"
+echo "  clarke start      — start API + Docker"
+echo "  clarke stop       — stop API server"
+echo "  clarke restart    — restart API server"
+echo "  clarke status     — show service status"
+echo "  clarke logs       — tail API logs"
 echo ""
-if [[ -f "$INSTALL_DIR/.clarke.pid" ]]; then
-    echo -e "${BOLD}Stop CLARKE:${NC}"
-    echo "  kill \$(cat $INSTALL_DIR/.clarke.pid)"
-    echo "  cd $INSTALL_DIR && docker compose down"
+if command -v systemctl &>/dev/null; then
+    echo -e "${BOLD}Systemd (auto-start on boot):${NC}"
+    echo "  systemctl --user start clarke"
+    echo "  systemctl --user stop clarke"
+    echo "  journalctl --user -u clarke -f"
+    echo "  loginctl enable-linger $(whoami)    — persist after logout"
     echo ""
 fi
 echo -e "License: Polyform Noncommercial 1.0.0"
