@@ -1,15 +1,41 @@
 {
-  "name": "@clarke/openclaw-plugin",
+  "name": "openclaw-clarke",
   "version": "0.4.0",
-  "description": "CLARKE memory and context engine — native OpenClaw plugin",
+  "description": "CLARKE memory and context engine — native OpenClaw plugin for brokered memory, context injection, and self-improving agents",
   "type": "module",
   "openclaw": {
-    "extensions": ["./dist/index.js"]
+    "extensions": ["./dist/index.js"],
+    "compat": {
+      "pluginApi": ">=2026.3.24",
+      "minGatewayVersion": "2026.3.24"
+    }
   },
+  "files": [
+    "dist/",
+    "openclaw.plugin.json",
+    "skills/",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "dev": "tsc --watch",
     "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "clarke",
+    "memory",
+    "context",
+    "rag",
+    "agent"
+  ],
+  "homepage": "https://github.com/nicktanix/clarke_v2",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nicktanix/clarke_v2.git",
+    "directory": "openclaw"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
@@ -18,5 +44,5 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "license": "Polyform-Noncommercial-1.0.0"
+  "license": "SEE LICENSE IN LICENSE"
 }
