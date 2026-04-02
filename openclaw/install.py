@@ -264,11 +264,13 @@ def _register_plugin(config: dict, config_path: Path) -> None:
     if plugin_parent not in paths:
         paths.append(plugin_parent)
 
-    # Add plugin entry config
-    entries = plugins.setdefault("entries", {})
-    entries["clarke"] = {
-        "enabled": True,
-    }
+    # Remove stale entries — plugin is discovered from load path, no entry needed
+    entries = plugins.get("entries", {})
+    entries.pop("clarke", None)
+    if entries:
+        plugins["entries"] = entries
+    elif "entries" in plugins:
+        del plugins["entries"]
 
     write_config(config_path, config)
 
