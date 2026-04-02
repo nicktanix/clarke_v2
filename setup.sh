@@ -132,12 +132,16 @@ else
     MISSING=1
 fi
 
-# Check Python version
+# Check Python version (3.12 or 3.13 — 3.14+ has langchain/pydantic v1 incompatibilities)
 PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || echo "0.0")
 PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
 PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
 if [[ "$PYTHON_MAJOR" -lt 3 ]] || [[ "$PYTHON_MAJOR" -eq 3 && "$PYTHON_MINOR" -lt 12 ]]; then
     err "Python 3.12+ required (found $PYTHON_VERSION)"
+    MISSING=1
+elif [[ "$PYTHON_MAJOR" -eq 3 && "$PYTHON_MINOR" -ge 14 ]]; then
+    err "Python 3.14+ is not yet supported (langchain requires Pydantic v1 compat)"
+    err "Please install Python 3.12 or 3.13"
     MISSING=1
 else
     ok "Python $PYTHON_VERSION"
@@ -207,6 +211,9 @@ if [[ ! -f ".env" ]]; then
     cp .env.example .env
     info "Created .env from .env.example"
 fi
+
+# Ensure .env ends with a newline before appending anything
+[[ -s .env && "$(tail -c1 .env)" != "" ]] && echo "" >> .env
 
 # Set the OpenAI key if provided
 if [[ -n "$OPENAI_KEY" ]]; then
