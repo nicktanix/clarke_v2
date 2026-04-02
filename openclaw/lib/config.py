@@ -37,10 +37,29 @@ def add_mcp_server(config: dict, server_name: str, server_def: dict) -> dict:
     return config
 
 
-def get_clarke_mcp_server_def(endpoint: str = "http://localhost:8000") -> dict:
-    """Build the CLARKE MCP server definition for openclaw.json."""
+def get_clarke_mcp_server_def(
+    endpoint: str = "http://localhost:8000",
+    clarke_install_dir: str | None = None,
+) -> dict:
+    """Build the CLARKE MCP server definition for openclaw.json.
+
+    Uses the absolute path to the CLARKE venv's Python binary so the
+    MCP server works regardless of what 'python' resolves to on the system.
+    """
+    from pathlib import Path
+
+    install_dir = Path(clarke_install_dir) if clarke_install_dir else Path.home() / ".clarke"
+    venv_python = install_dir / ".venv" / "bin" / "python"
+
+    # Fall back to python3 if venv doesn't exist (e.g., pip install -e was done globally)
+    if not venv_python.exists():
+        import shutil
+
+        venv_python = Path(shutil.which("python3") or "python3")
+
     return {
-        "command": "python",
+        "command": str(venv_python),
         "args": ["-m", "clarke.mcp.server"],
         "env": {"CLARKE_API_URL": endpoint},
+        "cwd": str(install_dir),
     }

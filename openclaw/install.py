@@ -148,7 +148,7 @@ def install(args: argparse.Namespace) -> None:
             print(f"  [dry-run] Would add CLARKE MCP server to {config_path}")
         else:
             config = read_config(config_path)
-            server_def = get_clarke_mcp_server_def(endpoint)
+            server_def = get_clarke_mcp_server_def(endpoint, str(CLARKE_REPO))
             config = add_mcp_server(config, "clarke", server_def)
             write_config(config_path, config)
             print(f"  Added CLARKE MCP server to {config_path}")

@@ -409,11 +409,19 @@ def configure_claude_code(
 
     # ── MCP server config (global) ─────────────────────────────────
     mcp_path = claude_dir / ".mcp.json"
+
+    # Use the venv Python so the clarke module is importable
+    clarke_install = Path.home() / ".clarke"
+    venv_python = clarke_install / ".venv" / "bin" / "python"
+    if not venv_python.exists():
+        venv_python = Path("python3")  # Fall back
+
     mcp_config = {
         "mcpServers": {
             "clarke": {
-                "command": "python",
+                "command": str(venv_python),
                 "args": ["-m", "clarke.mcp.server"],
+                "cwd": str(clarke_install),
                 "env": {
                     "CLARKE_API_URL": endpoint,
                 },
