@@ -105,6 +105,7 @@ class AgentContextSettings(BaseSettings):
     default_session_budget_tokens: int = 8000
     max_skills_per_session: int = 10
     skill_priority_cutoff: int = 5
+    subagent_coding_model: str = "openai-codex/gpt-5.4"
 
 
 class SelfImprovementSettings(BaseSettings):

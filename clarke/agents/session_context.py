@@ -723,6 +723,9 @@ def render_session_context_markdown(pack: SessionContextPack) -> str:
 
     # Available Capabilities — catalog for sub-agent spawning
     if pack.available_capabilities:
+        settings = get_settings()
+        coding_model = settings.agent_context.subagent_coding_model
+
         sections.append("## Sub-Agent Spawning")
         sections.append("")
         sections.append(
@@ -740,11 +743,13 @@ def render_session_context_markdown(pack: SessionContextPack) -> str:
         sections.append("```")
         sections.append('sessions_spawn({')
         sections.append('  runtime: "subagent",')
+        sections.append(f'  model: "{coding_model}",')
         sections.append('  task: "Review the authentication middleware for security vulnerabilities and OWASP Top 10 issues",')
         sections.append('})')
         sections.append("```")
         sections.append("")
         sections.append("**Key points:**")
+        sections.append(f"- Always use `model: \"{coding_model}\"` for coding sub-agents")
         sections.append("- Always use `runtime: \"subagent\"` for CLARKE-managed sub-agents")
         sections.append("- Write a detailed task description — CLARKE matches skills by keywords")
         sections.append("- Include keywords like `debug`, `test`, `review`, `plan` to target specific skills")
